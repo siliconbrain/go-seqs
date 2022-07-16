@@ -7,6 +7,76 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestConcat(t *testing.T) {
+	testCases := map[string]struct {
+		seqs []Seq[int]
+		want Seq[int]
+	}{
+		"no seqs": {
+			seqs: []Seq[int]{},
+			want: Empty[int](),
+		},
+		"one seq": {
+			seqs: []Seq[int]{
+				FromValues(1, 2, 3, 4),
+			},
+			want: FromValues(1, 2, 3, 4),
+		},
+		"two seqs": {
+			seqs: []Seq[int]{
+				FromValues(1, 2),
+				FromValues(3, 4),
+			},
+			want: FromValues(1, 2, 3, 4),
+		},
+		"more seqs": {
+			seqs: []Seq[int]{
+				FromValues(1),
+				FromValues(2),
+				FromValues(3),
+				FromValues(4),
+			},
+			want: FromValues(1, 2, 3, 4),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(Concat(testCase.seqs...)))
+		})
+	}
+}
+
+func TestCycle(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		take int
+		want Seq[int]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			take: 10,
+			want: Empty[int](),
+		},
+		"one element": {
+			seq:  FromValues(1),
+			take: 4,
+			want: RepeatN(1, 4),
+		},
+		"more elements": {
+			seq:  FromValues(1, 2, 3, 4),
+			take: 10,
+			want: FromValues(1, 2, 3, 4, 1, 2, 3, 4, 1, 2),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(Take(Cycle(testCase.seq), testCase.take)))
+		})
+	}
+}
+
 func TestEmpty(t *testing.T) {
 	require.Empty(t, ToSlice(Empty[int]()))
 	require.Implements(t, (*Lener)(nil), Empty[int]())
@@ -48,6 +118,41 @@ func TestFilter(t *testing.T) {
 	}
 }
 
+func TestIntersperse(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		val  int
+		want Seq[int]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			val:  42,
+			want: Empty[int](),
+		},
+		"one element seq": {
+			seq:  FromValues(1),
+			val:  42,
+			want: FromValues(1),
+		},
+		"two element seq": {
+			seq:  FromValues(1, 2),
+			val:  42,
+			want: FromValues(1, 42, 2),
+		},
+		"many element seq": {
+			seq:  FromValues(1, 2, 3, 4),
+			val:  42,
+			want: FromValues(1, 42, 2, 42, 3, 42, 4),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(Intersperse(testCase.seq, testCase.val)))
+		})
+	}
+}
+
 func TestMap(t *testing.T) {
 	t.Run("empty seq", func(t *testing.T) {
 		require.Equal(t, ToSlice(Empty[int]()), ToSlice(Map(Empty[int](), func(i int) int { return i })))
@@ -71,6 +176,49 @@ func TestReduce(t *testing.T) {
 
 func TestRepeat(t *testing.T) {
 	require.Equal(t, ToSlice(RepeatN(42, 6)), ToSlice(Take(Repeat(42), 6)))
+}
+
+func TestRoundRobin(t *testing.T) {
+	testCases := map[string]struct {
+		seqs []Seq[int]
+		want Seq[int]
+	}{
+		"no seqs": {
+			seqs: []Seq[int]{},
+			want: Empty[int](),
+		},
+		"one seq": {
+			seqs: []Seq[int]{
+				FromValues(1, 2, 3, 4),
+			},
+			want: FromValues(1, 2, 3, 4),
+		},
+		"two seqs": {
+			seqs: []Seq[int]{
+				FromValues(1, 3),
+				FromValues(2, 4),
+			},
+			want: FromValues(1, 2, 3, 4),
+		},
+		"more seqs": {
+			seqs: []Seq[int]{
+				FromValues(1),
+				FromValues(2, 2),
+				FromValues(3, 3, 3),
+				FromValues(4, 4, 4, 4),
+			},
+			want: FromValues(1, 2, 3, 4, 2, 3, 4, 3, 4, 4),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(RoundRobin(testCase.seqs...)))
+		})
+	}
+	t.Run("break early", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(1, 2, 3, 4, 2, 3)), ToSlice(Take(RoundRobin(RepeatN(1, 1), RepeatN(2, 2), RepeatN(3, 3), RepeatN(4, 4)), 6)))
+	})
 }
 
 func TestSkip(t *testing.T) {

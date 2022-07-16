@@ -1,6 +1,10 @@
 package seqs
 
-import "golang.org/x/exp/constraints"
+import (
+	"sync/atomic"
+
+	"golang.org/x/exp/constraints"
+)
 
 // Seq defines a minimal interface for a sequence of values
 type Seq[E any] interface {
@@ -14,6 +18,61 @@ type Lener interface {
 	//
 	// This method returns an `int` to be consistent with the `len()` built-in function.
 	Len() int
+}
+
+// Concat returns a sequence that is the concatenation of the specified sequences
+func Concat[E any](seqs ...Seq[E]) Seq[E] {
+	switch len(seqs) {
+	case 0:
+		return Empty[E]()
+	case 1:
+		return seqs[0]
+	default:
+		forEachUntil := func(fn func(E) bool) {
+			brk := false
+			for _, seq := range seqs {
+				seq.ForEachUntil(func(e E) bool {
+					brk = fn(e)
+					return brk
+				})
+				if brk {
+					return
+				}
+			}
+		}
+		if leners(seqs...) {
+			return seqFuncWithLen[E]{
+				forEachUntil: forEachUntil,
+				len: func() (l int) {
+					for _, seq := range seqs {
+						l += seq.(Lener).Len()
+					}
+					return
+				},
+			}
+		}
+		return seqFunc[E](forEachUntil)
+	}
+}
+
+// Cycle returns an (almost always) infinite sequence that cyclically repeats the elements of the specified sequence
+//
+// If the specified sequence is empty (or becomes empty at any point) the returned sequence becomes empty to avoid an unbreakable infinite loop.
+func Cycle[E any](seq Seq[E]) Seq[E] {
+	return seqFunc[E](func(fn func(E) bool) {
+		brk := false
+		for {
+			empty := true
+			seq.ForEachUntil(func(e E) bool {
+				empty = false
+				brk = fn(e)
+				return brk
+			})
+			if brk || empty {
+				return
+			}
+		}
+	})
 }
 
 // Empty returns an empty sequence
@@ -56,6 +115,30 @@ func FromValues[E any](values ...E) Seq[E] {
 // FromSlice adapts a slice to implement the Seq interface
 func FromSlice[S ~[]E, E any](s S) Seq[E] {
 	return sliceSeq[E](s)
+}
+
+// Intersperse returns a sequence whose elements are the same as the specified sequence's but interspersed with the specified value
+func Intersperse[E any](seq Seq[E], val E) Seq[E] {
+	forEachUntil := func(fn func(E) bool) {
+		first := true
+		seq.ForEachUntil(func(e E) bool {
+			if !first {
+				if fn(val) {
+					return true
+				}
+			} else {
+				first = false
+			}
+			return fn(e)
+		})
+	}
+	if lener, ok := seq.(Lener); ok {
+		return seqFuncWithLen[E]{
+			forEachUntil: forEachUntil,
+			len:          func() int { return max(lener.Len()*2-1, 0) },
+		}
+	}
+	return seqFunc[E](forEachUntil)
 }
 
 // Map returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence
@@ -106,6 +189,64 @@ func RepeatN[E any](e E, n int) Seq[E] {
 			}
 		},
 		len: func() int { return n },
+	}
+}
+
+// RoundRobin returns a sequence whose elements are obtained by alternately taking elements from the specified sequences in a round-robin fashion
+func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
+	switch len(seqs) {
+	case 0:
+		return Empty[E]()
+	case 1:
+		return seqs[0]
+	default:
+		forEachUntil := func(fn func(E) bool) {
+			recChs := make([]chan E, len(seqs))
+			stopCh := make(chan struct{})
+			live := int32(len(recChs))
+			for i := range seqs {
+				seq := seqs[i]
+				recCh := make(chan E)
+				go func() {
+					seq.ForEachUntil(func(e E) bool {
+						select {
+						case <-stopCh:
+							return true
+						case recCh <- e:
+							return false
+						}
+					})
+					close(recCh)
+					atomic.AddInt32(&live, -1)
+				}()
+				recChs[i] = recCh
+			}
+			i := 0
+			for {
+				if atomic.LoadInt32(&live) == 0 {
+					return
+				}
+				if e, ok := <-recChs[i]; ok {
+					if fn(e) {
+						close(stopCh)
+						return
+					}
+				}
+				i = (i + 1) % len(recChs)
+			}
+		}
+		if leners(seqs...) {
+			return seqFuncWithLen[E]{
+				forEachUntil: forEachUntil,
+				len: func() (l int) {
+					for _, seq := range seqs {
+						l += seq.(Lener).Len()
+					}
+					return
+				},
+			}
+		}
+		return seqFunc[E](forEachUntil)
 	}
 }
 
@@ -268,4 +409,13 @@ func min[V constraints.Ordered](a, b V) V {
 		return a
 	}
 	return b
+}
+
+func leners[E any](seqs ...Seq[E]) bool {
+	for _, seq := range seqs {
+		if _, ok := seq.(Lener); !ok {
+			return false
+		}
+	}
+	return true
 }
