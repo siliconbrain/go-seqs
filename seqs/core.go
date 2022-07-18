@@ -218,45 +218,45 @@ func RepeatN[E any](e E, n int) Seq[E] {
 
 // RoundRobin returns a sequence whose elements are obtained by alternately taking elements from the specified sequences in a round-robin fashion
 func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
-	switch len(seqs) {
+	switch l := len(seqs); l {
 	case 0:
 		return Empty[E]()
 	case 1:
 		return seqs[0]
 	default:
 		forEachUntil := func(fn func(E) bool) {
-			recChs := make([]chan E, len(seqs))
+			valChs := make([]chan E, l)
 			stopCh := make(chan struct{})
-			live := int32(len(recChs))
+			live := int32(l)
+			defer close(stopCh)
 			for i := range seqs {
 				seq := seqs[i]
-				recCh := make(chan E)
+				valCh := make(chan E)
 				go func() {
 					seq.ForEachUntil(func(e E) bool {
 						select {
 						case <-stopCh:
 							return true
-						case recCh <- e:
+						case valCh <- e:
 							return false
 						}
 					})
-					close(recCh)
+					close(valCh)
 					atomic.AddInt32(&live, -1)
 				}()
-				recChs[i] = recCh
+				valChs[i] = valCh
 			}
 			i := 0
 			for {
 				if atomic.LoadInt32(&live) == 0 {
 					return
 				}
-				if e, ok := <-recChs[i]; ok {
+				if e, ok := <-valChs[i]; ok {
 					if fn(e) {
-						close(stopCh)
 						return
 					}
 				}
-				i = (i + 1) % len(recChs)
+				i = (i + 1) % l
 			}
 		}
 		if leners(seqs...) {
