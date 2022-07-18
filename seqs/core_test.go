@@ -45,6 +45,12 @@ func TestConcat(t *testing.T) {
 			require.Equal(t, ToSlice(testCase.want), ToSlice(Concat(testCase.seqs...)))
 		})
 	}
+	t.Run("break early", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(1, 2, 2, 3, 3, 3)), ToSlice(Take(Concat(RepeatN(1, 1), RepeatN(2, 2), RepeatN(3, 3), RepeatN(4, 4)), 6)))
+	})
+	t.Run("with infinite seq", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(1, 2, 3, 4, 4, 4)), ToSlice(Take(Concat(FromValues(1, 2, 3), Repeat(4)), 6)))
+	})
 }
 
 func TestCycle(t *testing.T) {
@@ -158,6 +164,15 @@ func TestFlatten(t *testing.T) {
 	}
 }
 
+func TestForEachWhile(t *testing.T) {
+	var vals []int
+	ForEachWhile(FromValues(1, 2, 3, 4), func(i int) bool {
+		vals = append(vals, i)
+		return len(vals) < 3
+	})
+	require.Equal(t, []int{1, 2, 3}, vals)
+}
+
 func TestIntersperse(t *testing.T) {
 	testCases := map[string]struct {
 		seq  Seq[int]
@@ -191,6 +206,17 @@ func TestIntersperse(t *testing.T) {
 			require.Equal(t, ToSlice(testCase.want), ToSlice(Intersperse(testCase.seq, testCase.val)))
 		})
 	}
+	t.Run("break early", func(t *testing.T) {
+		t.Run("on odd element", func(t *testing.T) {
+			require.Equal(t, ToSlice(FromValues(1, 42, 1)), ToSlice(Take(Intersperse(RepeatN(1, 4), 42), 3)))
+		})
+		t.Run("on even element", func(t *testing.T) {
+			require.Equal(t, ToSlice(FromValues(1, 42, 1, 42)), ToSlice(Take(Intersperse(RepeatN(1, 4), 42), 4)))
+		})
+	})
+	t.Run("infinite seq", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(1, 42, 1, 42, 1, 42)), ToSlice(Take(Intersperse(Repeat(1), 42), 6)))
+	})
 }
 
 func TestMap(t *testing.T) {
@@ -202,6 +228,9 @@ func TestMap(t *testing.T) {
 	})
 	t.Run("to string", func(t *testing.T) {
 		require.Equal(t, ToSlice(FromValues("1", "2", "3", "4")), ToSlice(Map(FromValues(1, 2, 3, 4), func(i int) string { return fmt.Sprint(i) })))
+	})
+	t.Run("infinite seq", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(2, 2, 2, 2)), ToSlice(Take(Map(Repeat(1), func(i int) int { return i * 2 }), 4)))
 	})
 }
 
@@ -259,6 +288,9 @@ func TestRoundRobin(t *testing.T) {
 	t.Run("break early", func(t *testing.T) {
 		require.Equal(t, ToSlice(FromValues(1, 2, 3, 4, 2, 3)), ToSlice(Take(RoundRobin(RepeatN(1, 1), RepeatN(2, 2), RepeatN(3, 3), RepeatN(4, 4)), 6)))
 	})
+	t.Run("with infinite seq", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(1, 2, 42, 3, 4, 42, 42, 42)), ToSlice(Take(RoundRobin(FromValues(1, 3), FromValues(2, 4), Repeat(42)), 8)))
+	})
 }
 
 func TestSkip(t *testing.T) {
@@ -294,6 +326,9 @@ func TestSkip(t *testing.T) {
 			require.Equal(t, ToSlice(testCase.want), ToSlice(Skip(testCase.seq, testCase.n)))
 		})
 	}
+	t.Run("infinite seq", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(3, 4, 1, 2, 3, 4, 1, 2)), ToSlice(Take(Skip(Cycle(FromValues(1, 2, 3, 4)), 2), 8)))
+	})
 }
 
 func TestSkipWhile(t *testing.T) {
