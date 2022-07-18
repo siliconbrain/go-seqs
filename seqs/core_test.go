@@ -118,6 +118,46 @@ func TestFilter(t *testing.T) {
 	}
 }
 
+func TestFlatten(t *testing.T) {
+	testCases := map[string]struct {
+		seqs Seq[Seq[int]]
+		want Seq[int]
+	}{
+		"no seqs": {
+			seqs: Empty[Seq[int]](),
+			want: Empty[int](),
+		},
+		"one seq": {
+			seqs: FromValues(
+				FromValues(1, 2, 3, 4),
+			),
+			want: FromValues(1, 2, 3, 4),
+		},
+		"two seqs": {
+			seqs: FromValues(
+				FromValues(1, 2),
+				FromValues(3, 4),
+			),
+			want: FromValues(1, 2, 3, 4),
+		},
+		"more seqs": {
+			seqs: FromValues(
+				FromValues(1),
+				FromValues(2),
+				FromValues(3),
+				FromValues(4),
+			),
+			want: FromValues(1, 2, 3, 4),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(Flatten[int](testCase.seqs)))
+		})
+	}
+}
+
 func TestIntersperse(t *testing.T) {
 	testCases := map[string]struct {
 		seq  Seq[int]

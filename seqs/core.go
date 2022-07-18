@@ -98,6 +98,24 @@ func Filter[E any](seq Seq[E], pred func(E) bool) Seq[E] {
 	})
 }
 
+// Flatten returns a sequence that is the concatenation of sequences contained by the specified sequence
+//
+// The returned sequence never implements the Lener interface. Use Concat with ToSlice if you want the resulting sequence to implement Lener when possible.
+func Flatten[E any, S Seq[E]](seq Seq[S]) Seq[E] {
+	// NOTE: We could support Lener by checking if all subsequences implement Lener (like with Concat),
+	//       but looping through the super sequence might incur a nontrivial performance hit.
+	return seqFunc[E](func(fn func(E) bool) {
+		brk := false
+		seq.ForEachUntil(func(s S) bool {
+			s.ForEachUntil(func(e E) bool {
+				brk = fn(e)
+				return brk
+			})
+			return brk
+		})
+	})
+}
+
 // ForEach calls the specified function for each element of the specified sequence
 func ForEach[E any](seq Seq[E], fn func(E)) {
 	seq.ForEachUntil(func(e E) bool {
