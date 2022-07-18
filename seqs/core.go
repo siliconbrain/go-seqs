@@ -20,6 +20,12 @@ type Lener interface {
 	Len() int
 }
 
+// LenerSeq is a combination of the Seq and Lener interfaces
+type LenerSeq[E any] interface {
+	Seq[E]
+	Lener
+}
+
 // Concat returns a sequence that is the concatenation of the specified sequences
 func Concat[E any](seqs ...Seq[E]) Seq[E] {
 	switch len(seqs) {
