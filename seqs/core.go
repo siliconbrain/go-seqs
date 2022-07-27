@@ -20,8 +20,8 @@ type Lener interface {
 	Len() int
 }
 
-// LenerSeq is a combination of the Seq and Lener interfaces
-type LenerSeq[E any] interface {
+// FiniteSeq is a Seq that has a finite length
+type FiniteSeq[E any] interface {
 	Seq[E]
 	Lener
 }
