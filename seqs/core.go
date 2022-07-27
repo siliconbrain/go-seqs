@@ -88,9 +88,19 @@ func Empty[E any]() Seq[E] {
 
 // Filter returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `true`
 func Filter[E any](seq Seq[E], pred func(E) bool) Seq[E] {
+	return FilterWithIndex(seq, func(_ int, e E) bool {
+		return pred(e)
+	})
+}
+
+// FilterWithIndex returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `true`
+func FilterWithIndex[E any](seq Seq[E], pred func(int, E) bool) Seq[E] {
 	return seqFunc[E](func(fn func(E) bool) {
+		idx := 0
 		seq.ForEachUntil(func(e E) bool {
-			if pred(e) {
+			cond := pred(idx, e)
+			idx++
+			if cond {
 				return fn(e)
 			}
 			return false
@@ -124,10 +134,38 @@ func ForEach[E any](seq Seq[E], fn func(E)) {
 	})
 }
 
+// ForEachUntilWithIndex calls the specified function for each element of the specified sequence along with its index until the function returns `true`
+func ForEachUntilWithIndex[E any](seq Seq[E], fn func(int, E) bool) {
+	idx := 0
+	seq.ForEachUntil(func(e E) bool {
+		res := fn(idx, e)
+		idx++
+		return res
+	})
+}
+
+// ForEachWithIndex calls the specified function for each element of the specified sequence along with its index
+func ForEachWithIndex[E any](seq Seq[E], fn func(int, E)) {
+	ForEachUntilWithIndex(seq, func(i int, e E) bool {
+		fn(i, e)
+		return false
+	})
+}
+
 // ForEachWhile calls the specified function for each element of the specified sequence while the function returns `true`
 func ForEachWhile[E any](seq Seq[E], fn func(E) bool) {
 	seq.ForEachUntil(func(e E) bool {
 		return !fn(e)
+	})
+}
+
+// ForEachWhileWithIndex calls the specified function for each element of the specified sequence along with its index while the function returns `true`
+func ForEachWhileWithIndex[E any](seq Seq[E], fn func(int, E) bool) {
+	idx := 0
+	ForEachWhile(seq, func(e E) bool {
+		res := fn(idx, e)
+		idx++
+		return res
 	})
 }
 
@@ -167,9 +205,19 @@ func Intersperse[E any](seq Seq[E], val E) Seq[E] {
 
 // Map returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence
 func Map[Src any, Dst any](seq Seq[Src], mapfn func(Src) Dst) Seq[Dst] {
+	return MapWithIndex(seq, func(_ int, e Src) Dst {
+		return mapfn(e)
+	})
+}
+
+// MapWithIndex returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence along with their indices
+func MapWithIndex[Src any, Dst any](seq Seq[Src], mapfn func(int, Src) Dst) Seq[Dst] {
 	forEachUntil := func(fn func(Dst) bool) {
+		idx := 0
 		seq.ForEachUntil(func(src Src) bool {
-			return fn(mapfn(src))
+			res := fn(mapfn(idx, src))
+			idx++
+			return res
 		})
 	}
 

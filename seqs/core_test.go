@@ -164,10 +164,26 @@ func TestFlatten(t *testing.T) {
 	}
 }
 
+func TestForEachWithIndex(t *testing.T) {
+	ForEachWithIndex(FromValues(1, 2, 3, 4), func(i int, e int) {
+		require.Equal(t, i, e-1)
+	})
+}
+
 func TestForEachWhile(t *testing.T) {
 	var vals []int
 	ForEachWhile(FromValues(1, 2, 3, 4), func(i int) bool {
 		vals = append(vals, i)
+		return len(vals) < 3
+	})
+	require.Equal(t, []int{1, 2, 3}, vals)
+}
+
+func TestForEachWhileWithIndex(t *testing.T) {
+	var vals []int
+	ForEachWhileWithIndex(FromValues(1, 2, 3, 4), func(i int, e int) bool {
+		require.Equal(t, i, e-1)
+		vals = append(vals, e)
 		return len(vals) < 3
 	})
 	require.Equal(t, []int{1, 2, 3}, vals)
