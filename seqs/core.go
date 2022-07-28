@@ -57,7 +57,7 @@ func Concat[E any](seqs ...Seq[E]) Seq[E] {
 				},
 			}
 		}
-		return seqFunc[E](forEachUntil)
+		return SeqFunc(forEachUntil)
 	}
 }
 
@@ -65,7 +65,7 @@ func Concat[E any](seqs ...Seq[E]) Seq[E] {
 //
 // If the specified sequence is empty (or becomes empty at any point) the returned sequence becomes empty to avoid an unbreakable infinite loop.
 func Cycle[E any](seq Seq[E]) Seq[E] {
-	return seqFunc[E](func(fn func(E) bool) {
+	return SeqFunc(func(fn func(E) bool) {
 		brk := false
 		for {
 			empty := true
@@ -95,7 +95,7 @@ func Filter[E any](seq Seq[E], pred func(E) bool) Seq[E] {
 
 // FilterWithIndex returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `true`
 func FilterWithIndex[E any](seq Seq[E], pred func(int, E) bool) Seq[E] {
-	return seqFunc[E](func(fn func(E) bool) {
+	return SeqFunc(func(fn func(E) bool) {
 		idx := 0
 		seq.ForEachUntil(func(e E) bool {
 			cond := pred(idx, e)
@@ -114,7 +114,7 @@ func FilterWithIndex[E any](seq Seq[E], pred func(int, E) bool) Seq[E] {
 func Flatten[E any, S Seq[E]](seq Seq[S]) Seq[E] {
 	// NOTE: We could support Lener by checking if all subsequences implement Lener (like with Concat),
 	//       but looping through the super sequence might incur a nontrivial performance hit.
-	return seqFunc[E](func(fn func(E) bool) {
+	return SeqFunc(func(fn func(E) bool) {
 		brk := false
 		seq.ForEachUntil(func(s S) bool {
 			s.ForEachUntil(func(e E) bool {
@@ -200,7 +200,7 @@ func Intersperse[E any](seq Seq[E], val E) Seq[E] {
 			len:          func() int { return max(lener.Len()*2-1, 0) },
 		}
 	}
-	return seqFunc[E](forEachUntil)
+	return SeqFunc(forEachUntil)
 }
 
 // Map returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence
@@ -227,7 +227,7 @@ func MapWithIndex[Src any, Dst any](seq Seq[Src], mapfn func(int, Src) Dst) Seq[
 			len:          lener.Len, // same length as seq
 		}
 	}
-	return seqFunc[Dst](forEachUntil)
+	return SeqFunc(forEachUntil)
 }
 
 // Reduce returns a value obtained by applying the specified function to an accumlator value (initialized with the specified seed value) and successive elements of the sequence
@@ -241,7 +241,7 @@ func Reduce[E any, A any](seq Seq[E], seed A, fn func(A, E) A) (res A) {
 
 // Repeat returns an infinite sequence that repeats the specified value
 func Repeat[E any](e E) Seq[E] {
-	return seqFunc[E](func(fn func(E) bool) {
+	return SeqFunc(func(fn func(E) bool) {
 		for {
 			if fn(e) {
 				return
@@ -318,8 +318,13 @@ func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
 				},
 			}
 		}
-		return seqFunc[E](forEachUntil)
+		return SeqFunc(forEachUntil)
 	}
+}
+
+// SeqFunc returns a sequence that has its ForEachUntil method implemented by the specified function
+func SeqFunc[E any](fn func(func(E) bool)) Seq[E] {
+	return seqFunc[E](fn)
 }
 
 // Skip returns a sequence that omits the first `n` number of elements of the specified sequence
@@ -345,12 +350,12 @@ func Skip[E any](s Seq[E], n int) Seq[E] {
 			len:          func() int { return max(lener.Len()-n, 0) },
 		}
 	}
-	return seqFunc[E](forEachUntil)
+	return SeqFunc(forEachUntil)
 }
 
 // SkipWhile returns a sequence that omits elements of the specified sequence while the specified predicate returns `true`
 func SkipWhile[E any](s Seq[E], pred func(E) bool) Seq[E] {
-	return seqFunc[E](func(fn func(E) bool) {
+	return SeqFunc(func(fn func(E) bool) {
 		skipping := true
 		s.ForEachUntil(func(e E) bool {
 			if !skipping {
@@ -385,14 +390,14 @@ func Take[E any](s Seq[E], n int) Seq[E] {
 			len:          func() int { return min(lener.Len(), n) },
 		}
 	}
-	return seqFunc[E](forEachUntil)
+	return SeqFunc(forEachUntil)
 }
 
 // TakeWhile returns a sequence of the first elements of the specified sequence while the specified predicate returns `true`
 //
 // TakeWhile(FromValues())
 func TakeWhile[E any](s Seq[E], pred func(E) bool) Seq[E] {
-	return seqFunc[E](func(fn func(E) bool) {
+	return SeqFunc(func(fn func(E) bool) {
 		s.ForEachUntil(func(e E) bool {
 			if pred(e) {
 				return fn(e)
