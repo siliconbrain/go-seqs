@@ -264,8 +264,78 @@ func RepeatN[E any](e E, n int) Seq[E] {
 	}
 }
 
-// RoundRobin returns a sequence whose elements are obtained by alternately taking elements from the specified sequences in a round-robin fashion
+// RoundRobin returns a sequence whose elements are obtained by alternately taking elements from the specified sequences in a round-robin fashion.
+// Sequences are enumerated concurrently but lazily and in lock-step, thus two sequences are never advanced at the same time.
 func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
+	switch l := len(seqs); l {
+	case 0:
+		return Empty[E]()
+	case 1:
+		return seqs[0]
+	default:
+		type bichan[V any] struct {
+			req chan struct{}
+			rsp chan V
+		}
+		forEachUntil := func(fn func(E) bool) {
+			chans := make([]bichan[E], l)
+			live := int32(l)
+			for i, seq := range seqs {
+				i := i
+				chans[i] = bichan[E]{
+					req: make(chan struct{}),
+					rsp: make(chan E),
+				}
+				go func() {
+					defer close(chans[i].rsp)
+					defer atomic.AddInt32(&live, -1)
+					if _, open := <-chans[i].req; !open {
+						return
+					}
+					ForEachWhile(seq, func(e E) bool {
+						chans[i].rsp <- e
+						_, open := <-chans[i].req
+						return open
+					})
+				}()
+			}
+			defer func(){
+				for _, ch := range chans {
+
+				}
+			}()
+			i := 0
+			for {
+				if atomic.LoadInt32(&live) == 0 {
+					return
+				}
+				chans[i].req
+					if fn(e) {
+						return
+					}
+				}
+				i = (i + 1) % l
+			}
+		}
+		if leners(seqs...) {
+			return seqFuncWithLen[E]{
+				forEachUntil: forEachUntil,
+				len: func() (l int) {
+					for _, seq := range seqs {
+						l += seq.(Lener).Len()
+					}
+					return
+				},
+			}
+		}
+		return SeqFunc(forEachUntil)
+	}
+}
+
+// RoundRobinPrefetch returns a sequence whose elements are obtained by alternately taking elements from the specified sequences in a round-robin fashion.
+// Sequences are enumerated concurrently, "pre-fetching" elements from each sequence ahead of time.
+// This can be useful with sequences that take a longer time to compute their elements because the computation of a round of elements can overlap.
+func RoundRobinPrefetch[E any](seqs ...Seq[E]) Seq[E] {
 	switch l := len(seqs); l {
 	case 0:
 		return Empty[E]()
@@ -281,6 +351,8 @@ func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
 				seq := seqs[i]
 				valCh := make(chan E)
 				go func() {
+					defer close(valCh)
+					defer atomic.AddInt32(&live, -1)
 					seq.ForEachUntil(func(e E) bool {
 						select {
 						case <-stopCh:
@@ -289,8 +361,6 @@ func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
 							return false
 						}
 					})
-					close(valCh)
-					atomic.AddInt32(&live, -1)
 				}()
 				valChs[i] = valCh
 			}
