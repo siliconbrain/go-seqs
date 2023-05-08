@@ -382,6 +382,86 @@ func TestSkipWhile(t *testing.T) {
 	}
 }
 
+func TestSlidingWindow(t *testing.T) {
+	t.Run("zero count", func(t *testing.T) {
+		require.Panics(t, func() {
+			SlidingWindow(FromValues(1, 2, 3, 4), 0, 1)
+		})
+	})
+	t.Run("zero skip", func(t *testing.T) {
+		require.Panics(t, func() {
+			SlidingWindow(FromValues(1, 2, 3, 4), 1, 0)
+		})
+	})
+	testCases := map[string]struct {
+		seq   Seq[int]
+		count int
+		skip  int
+		want  Seq[[]int]
+	}{
+		"empty seq": {
+			seq:   Empty[int](),
+			count: 1,
+			skip:  1,
+			want:  Empty[[]int](),
+		},
+		"each element by itself": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 1,
+			skip:  1,
+			want:  FromValues([]int{1}, []int{2}, []int{3}, []int{4}),
+		},
+		"overlapping pairs": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 2,
+			skip:  1,
+			want:  FromValues([]int{1, 2}, []int{2, 3}, []int{3, 4}),
+		},
+		"adjecent pairs": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 2,
+			skip:  2,
+			want:  FromValues([]int{1, 2}, []int{3, 4}),
+		},
+		"disjunct pairs": {
+			seq:   FromValues(1, 2, 3, 4, 5, 6, 7, 8),
+			count: 2,
+			skip:  4,
+			want:  FromValues([]int{1, 2}, []int{5, 6}),
+		},
+		"overlapping triplets": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 3,
+			skip:  1,
+			want:  FromValues([]int{1, 2, 3}, []int{2, 3, 4}),
+		},
+		"adjecent triplets": {
+			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
+			count: 3,
+			skip:  3,
+			want:  FromValues([]int{1, 2, 3}, []int{4, 5, 6}),
+		},
+		"disjunct triplets": {
+			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
+			count: 3,
+			skip:  4,
+			want:  FromValues([]int{1, 2, 3}, []int{5, 6, 7}),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(SlidingWindow(testCase.seq, testCase.count, testCase.skip)))
+		})
+	}
+	t.Run("break early", func(t *testing.T) {
+		require.Equal(t, [][]int{{1, 2}, {2, 3}}, ToSlice(Take(SlidingWindow(FromValues(1, 2, 3, 4, 5, 6), 2, 1), 2)))
+	})
+	t.Run("with infinite seq", func(t *testing.T) {
+		require.Equal(t, [][]int{{1, 1}, {1, 1}}, ToSlice(Take(SlidingWindow(Repeat(1), 2, 1), 2)))
+	})
+}
+
 func TestTake(t *testing.T) {
 	testCases := map[string]struct {
 		seq  Seq[int]

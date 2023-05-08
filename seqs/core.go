@@ -4,6 +4,7 @@ import (
 	"sync/atomic"
 
 	"golang.org/x/exp/constraints"
+	"golang.org/x/exp/slices"
 )
 
 // Seq defines a minimal interface for a sequence of values
@@ -368,6 +369,48 @@ func SkipWhile[E any](s Seq[E], pred func(E) bool) Seq[E] {
 			return false
 		})
 	})
+}
+
+// SlidingWindow returns a sequence of windows (slices of count length) containing the elements of the specified sequence.
+// Windows start after each other with a distance of skip.
+func SlidingWindow[E any](seq Seq[E], count int, skip int) (res Seq[[]E]) {
+	if count < 1 {
+		panic("count must be positive")
+	}
+	if skip < 1 {
+		panic("skip must be positive")
+	}
+	forEachUntil := func(fn func([]E) bool) {
+		shift := min(skip, count)
+		ignore := skip - shift
+
+		buf := make([]E, 0, count)
+		ignoreCnt := 0
+		seq.ForEachUntil(func(e E) bool {
+			if ignoreCnt > 0 {
+				ignoreCnt--
+				return false
+			}
+			buf = append(buf, e)
+			if len(buf) == count {
+				if fn(slices.Clone(buf)) {
+					return true
+				}
+				buf = append(buf[0:0], buf[shift:]...)
+				ignoreCnt = ignore // reset ignore counter
+			}
+			return false
+		})
+	}
+	if lener, ok := seq.(Lener); ok {
+		return seqFuncWithLen[[]E]{
+			forEachUntil: forEachUntil,
+			len: func() int {
+				return (lener.Len() - count + 1) / skip
+			},
+		}
+	}
+	return SeqFunc(forEachUntil)
 }
 
 // Take returns a sequence of the first `n` number of elements of the specified sequence
