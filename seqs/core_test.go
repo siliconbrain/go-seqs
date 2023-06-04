@@ -4,8 +4,88 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAny(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		pred func(int) bool
+		want bool
+	}{
+		"empty seq": {
+			seq: Empty[int](),
+			pred: func(i int) bool {
+				return i < 42
+			},
+			want: false,
+		},
+		"seq without matching element": {
+			seq: FromValues(21, 42, 84),
+			pred: func(i int) bool {
+				return i%5 == 0
+			},
+			want: false,
+		},
+		"seq with matching element": {
+			seq: FromValues(21, 42, 84),
+			pred: func(i int) bool {
+				return 30 < i && i < 50
+			},
+			want: true,
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, testCase.want, Any(testCase.seq, testCase.pred))
+		})
+	}
+}
+
+func TestAll(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		pred func(int) bool
+		want bool
+	}{
+		"empty seq": {
+			seq: Empty[int](),
+			pred: func(i int) bool {
+				return i < 42
+			},
+			want: true,
+		},
+		"seq without matching element": {
+			seq: FromValues(21, 42, 84),
+			pred: func(i int) bool {
+				return i%5 == 0
+			},
+			want: false,
+		},
+		"seq with matching elements": {
+			seq: FromValues(21, 42, 84),
+			pred: func(i int) bool {
+				return i > 30
+			},
+			want: false,
+		},
+		"seq of matching element": {
+			seq: FromValues(21, 42, 84),
+			pred: func(i int) bool {
+				return i%3 == 0
+			},
+			want: true,
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, testCase.want, All(testCase.seq, testCase.pred))
+		})
+	}
+}
 
 func TestConcat(t *testing.T) {
 	testCases := map[string]struct {
