@@ -572,6 +572,28 @@ func TestSlidingWindow(t *testing.T) {
 	})
 }
 
+func TestSum(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		want int
+	}{
+		"sum of empty sequence is zero value": {
+			seq:  Empty[int](),
+			want: 0,
+		},
+		"sum of sequence is the sum of its elements": {
+			seq:  FromValues(1, 2, 3),
+			want: 6,
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, testCase.want, Sum(testCase.seq))
+		})
+	}
+}
+
 func TestTake(t *testing.T) {
 	testCases := map[string]struct {
 		seq  Seq[int]

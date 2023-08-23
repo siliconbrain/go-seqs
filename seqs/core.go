@@ -445,6 +445,16 @@ func SlidingWindow[E any](seq Seq[E], count int, skip int) (res Seq[[]E]) {
 	return SeqFunc(forEachUntil)
 }
 
+// Sum returns the sum of the specified sequence's elements.
+func Sum[E Summable](seq Seq[E]) E {
+	return Reduce(seq, 0, add[E])
+}
+
+// Summable lists types that support addition using the + operator
+type Summable interface {
+	~float32 | ~float64 | ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
+}
+
 // Take returns a sequence of the first `n` number of elements of the specified sequence
 //
 // If the source sequence has less then `n` elements the returned sequence will also have only that many elements
@@ -547,6 +557,10 @@ func (s sliceSeq[E]) ForEachUntil(fn func(E) bool) {
 
 func (s sliceSeq[E]) Len() int {
 	return len(s)
+}
+
+func add[V Summable](a, b V) V {
+	return a + b
 }
 
 func leners[E any](seqs ...Seq[E]) bool {
