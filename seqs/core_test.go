@@ -87,6 +87,36 @@ func TestAny(t *testing.T) {
 	}
 }
 
+func TestAppendTo(t *testing.T) {
+	testCases := map[string]struct {
+		seq   Seq[int]
+		slice []int
+		want  []int
+	}{
+		"empty sequence does not change the slice": {
+			seq:   Empty[int](),
+			slice: []int{1, 2, 3},
+			want:  []int{1, 2, 3},
+		},
+		"all sequence elements are appended to the slice in order": {
+			seq:   FromValues(4, 5, 6),
+			slice: []int{1, 2, 3},
+			want:  []int{1, 2, 3, 4, 5, 6},
+		},
+		"sequence can be appended to nil slice": {
+			seq:   FromValues(1, 2, 3),
+			slice: nil,
+			want:  []int{1, 2, 3},
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, testCase.want, AppendTo(testCase.seq, testCase.slice))
+		})
+	}
+}
+
 func TestConcat(t *testing.T) {
 	testCases := map[string]struct {
 		seqs []Seq[int]

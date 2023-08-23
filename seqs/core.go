@@ -48,6 +48,17 @@ func Any[E any](seq Seq[E], pred func(E) bool) (res bool) {
 	return
 }
 
+// AppendTo appends elements from the specified sequence to the slice(ish)
+func AppendTo[E any, S ~[]E](seq Seq[E], slice S) S {
+	if lener, ok := seq.(Lener); ok {
+		slices.Grow(slice, lener.Len())
+	}
+	ForEach(seq, func(e E) {
+		slice = append(slice, e)
+	})
+	return slice
+}
+
 // Concat returns a sequence that is the concatenation of the specified sequences
 func Concat[E any](seqs ...Seq[E]) Seq[E] {
 	switch len(seqs) {
