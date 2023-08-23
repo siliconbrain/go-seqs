@@ -1,10 +1,8 @@
 package seqs
 
 import (
+	"slices"
 	"sync/atomic"
-
-	"golang.org/x/exp/constraints"
-	"golang.org/x/exp/slices"
 )
 
 // Seq defines a minimal interface for a sequence of values
@@ -538,20 +536,6 @@ func (s sliceSeq[E]) ForEachUntil(fn func(E) bool) {
 
 func (s sliceSeq[E]) Len() int {
 	return len(s)
-}
-
-func max[V constraints.Ordered](a, b V) V {
-	if a < b {
-		return b
-	}
-	return a
-}
-
-func min[V constraints.Ordered](a, b V) V {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func leners[E any](seqs ...Seq[E]) bool {
