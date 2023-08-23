@@ -25,23 +25,23 @@ type FiniteSeq[E any] interface {
 	Lener
 }
 
-// Any returns true if the specified predicate returns true for any element of the specified sequence
-func Any[E any](seq Seq[E], pred func(E) bool) (res bool) {
-	Map(seq, pred).ForEachUntil(func(b bool) bool {
-		if b {
-			res = true
-		}
-		return b
-	})
-	return
-}
-
 // All returns true if the specified predicate returns true for all elements of the specified sequence
 func All[E any](seq Seq[E], pred func(E) bool) (res bool) {
 	res = true
 	ForEachWhile(Map(seq, pred), func(b bool) bool {
 		if !b {
 			res = false
+		}
+		return b
+	})
+	return
+}
+
+// Any returns true if the specified predicate returns true for any element of the specified sequence
+func Any[E any](seq Seq[E], pred func(E) bool) (res bool) {
+	Map(seq, pred).ForEachUntil(func(b bool) bool {
+		if b {
+			res = true
 		}
 		return b
 	})
