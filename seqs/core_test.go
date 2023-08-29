@@ -299,6 +299,46 @@ func TestForEachWhileWithIndex(t *testing.T) {
 	require.Equal(t, []int{1, 2, 3}, vals)
 }
 
+func TestGenerate(t *testing.T) {
+	testCases := map[string]struct {
+		fn   func() int
+		want []int
+	}{
+		"return 4 randomly": {
+			fn: func() int {
+				return 4
+			},
+			want: []int{4, 4, 4, 4},
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, testCase.want, ToSlice(Take(Generate(testCase.fn), len(testCase.want))))
+		})
+	}
+}
+
+func TestGenerateWithIndex(t *testing.T) {
+	testCases := map[string]struct {
+		fn   func(idx int) int
+		want []int
+	}{
+		"count by 2": {
+			fn: func(idx int) int {
+				return idx * 2
+			},
+			want: []int{0, 2, 4, 6},
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, testCase.want, ToSlice(Take(GenerateWithIndex(testCase.fn), len(testCase.want))))
+		})
+	}
+}
+
 func TestIntersperse(t *testing.T) {
 	testCases := map[string]struct {
 		seq  Seq[int]
