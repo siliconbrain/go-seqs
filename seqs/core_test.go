@@ -299,6 +299,21 @@ func TestForEachWhileWithIndex(t *testing.T) {
 	require.Equal(t, []int{1, 2, 3}, vals)
 }
 
+func TestFromSlicePtrs(t *testing.T) {
+	vals := []int{1, 2, 3, 4}
+	seq := FromSlicePtrs(vals)
+	ForEach(seq, func(i *int) { *i = *i * 2 })
+	assert.Equal(t, []int{2, 4, 6, 8}, vals)
+
+	// cover Len() method
+	lener, ok := seq.(Lener)
+	require.True(t, ok)
+	assert.Equal(t, len(vals), lener.Len())
+
+	// cover early exit
+	assert.Equal(t, vals[:3], ToSlice(Take(Map(seq, func(p *int) int { return *p }), 3)))
+}
+
 func TestGenerate(t *testing.T) {
 	testCases := map[string]struct {
 		fn   func() int
