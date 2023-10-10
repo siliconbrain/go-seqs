@@ -27,25 +27,22 @@ type FiniteSeq[E any] interface {
 
 // All returns true if the specified predicate returns true for all elements of the specified sequence
 func All[E any](seq Seq[E], pred func(E) bool) (res bool) {
-	res = true
-	ForEachWhile(Map(seq, pred), func(b bool) bool {
-		if !b {
-			res = false
-		}
-		return b
+	return And(Map(seq, pred))
+}
+
+// And returns true if all elements of the specified sequence are true, which includes the empty sequence
+func And(seq Seq[bool]) bool {
+	res := true
+	ForEachWhile(seq, func(b bool) bool {
+		res = res && bool(b)
+		return res
 	})
-	return
+	return res
 }
 
 // Any returns true if the specified predicate returns true for any element of the specified sequence
 func Any[E any](seq Seq[E], pred func(E) bool) (res bool) {
-	Map(seq, pred).ForEachUntil(func(b bool) bool {
-		if b {
-			res = true
-		}
-		return b
-	})
-	return
+	return Or(Map(seq, pred))
 }
 
 // AppendTo appends elements from the specified sequence to the slice(ish)
@@ -282,6 +279,16 @@ func MapWithIndex[Src any, Dst any](seq Seq[Src], mapfn func(int, Src) Dst) Seq[
 		}
 	}
 	return SeqFunc(forEachUntil)
+}
+
+// Or returns true if any element of the specified sequence is true, which does not include the empty sequence
+func Or(seq Seq[bool]) bool {
+	res := false
+	seq.ForEachUntil(func(b bool) bool {
+		res = res || b
+		return res
+	})
+	return res
 }
 
 // Reduce returns a value obtained by applying the specified function to an accumlator value (initialized with the specified seed value) and successive elements of the sequence
