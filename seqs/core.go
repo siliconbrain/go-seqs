@@ -547,6 +547,111 @@ func ToSlice[E any](seq Seq[E]) (res []E) {
 	return
 }
 
+// ZipMany returns a sequence of slices containing elements of the same index from the specified sequences
+func ZipMany[E any](seqs ...Seq[E]) Seq[[]E] {
+	switch len(seqs) {
+	case 0:
+		return Empty[[]E]()
+	case 1:
+		return Map(seqs[0], func(e E) []E { return []E{e} })
+	}
+
+	forEachUntil := func(fn func([]E) bool) {
+		nextChs := make([]chan E, len(seqs))
+		moveNextChs := make([]chan struct{}, len(seqs))
+
+		for i := range seqs {
+			nextChs[i] = make(chan E)
+			moveNextChs[i] = make(chan struct{})
+
+			defer close(moveNextChs[i])
+
+			go iterate(seqs[i], nextChs[i], moveNextChs[i])
+		}
+
+		for {
+			for _, moveNextCh := range moveNextChs {
+				moveNextCh <- struct{}{}
+			}
+
+			nexts := make([]E, len(seqs))
+			allHaveNext := true
+			for i, nextCh := range nextChs {
+				next, hasNext := <-nextCh
+				nexts[i] = next
+				allHaveNext = allHaveNext && hasNext
+			}
+
+			if !allHaveNext || fn(nexts) {
+				return
+			}
+		}
+	}
+	if leners(seqs...) {
+		return seqFuncWithLen[[]E]{
+			forEachUntil: forEachUntil,
+			len: func() (length int) {
+				for _, seq := range seqs {
+					length = min(length, seq.(Lener).Len())
+				}
+				return
+			},
+		}
+	}
+	return SeqFunc(forEachUntil)
+}
+
+// ZipWith returns a sequence containing results of the specified merge function applied to elements of the same index from both specified sequences
+func ZipWith[E1 any, E2 any, T any](seq1 Seq[E1], seq2 Seq[E2], merge func(E1, E2) T) Seq[T] {
+	forEachUntil := func(fn func(T) bool) {
+		nextCh1, nextCh2 := make(chan E1), make(chan E2)
+		moveNextCh1, moveNextCh2 := make(chan struct{}), make(chan struct{})
+
+		// closing moveNextCh* channels releases the below goroutines
+		defer close(moveNextCh1)
+		defer close(moveNextCh2)
+
+		go iterate(seq1, nextCh1, moveNextCh1)
+		go iterate(seq2, nextCh2, moveNextCh2)
+
+		for {
+			moveNextCh1 <- struct{}{}
+			moveNextCh2 <- struct{}{}
+
+			next1, hasNext1 := <-nextCh1
+			next2, hasNext2 := <-nextCh2
+
+			if !hasNext1 || !hasNext2 || fn(merge(next1, next2)) {
+				return
+			}
+		}
+	}
+	if lener1, ok := seq1.(Lener); ok {
+		if lener2, ok := seq2.(Lener); ok {
+			return seqFuncWithLen[T]{
+				forEachUntil: forEachUntil,
+				len:          func() int { return min(lener1.Len(), lener2.Len()) },
+			}
+		}
+	}
+	return SeqFunc(forEachUntil)
+}
+
+func iterate[E any](seq Seq[E], nextCh chan<- E, moveNextCh <-chan struct{}) {
+	defer close(nextCh)
+
+	_, moveNext := <-moveNextCh
+	if !moveNext {
+		return
+	}
+
+	ForEachWhile(seq, func(e E) bool {
+		nextCh <- e
+		_, moveNext := <-moveNextCh
+		return moveNext
+	})
+}
+
 type emptySeq[E any] struct{}
 
 func (emptySeq[E]) ForEachUntil(func(E) bool) {}

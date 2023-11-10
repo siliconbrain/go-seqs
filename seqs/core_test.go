@@ -752,3 +752,98 @@ func TestToSet(t *testing.T) {
 		})
 	}
 }
+
+func TestZipMany(t *testing.T) {
+	testCases := map[string]struct {
+		seqs []Seq[int]
+		want Seq[[]int]
+	}{
+		"no seqs": {
+			seqs: []Seq[int]{},
+			want: Empty[[]int](),
+		},
+		"single seq": {
+			seqs: []Seq[int]{
+				FromValues(1, 2, 3, 4),
+			},
+			want: FromValues([]int{1}, []int{2}, []int{3}, []int{4}),
+		},
+		"seqs of same size": {
+			seqs: []Seq[int]{
+				FromValues(1, 2, 3, 4),
+				FromValues(5, 6, 7, 8),
+			},
+			want: FromValues([]int{1, 5}, []int{2, 6}, []int{3, 7}, []int{4, 8}),
+		},
+		"seqs of different size": {
+			seqs: []Seq[int]{
+				FromValues(1, 2, 3),
+				FromValues(4, 5, 6, 7),
+				FromValues(8, 9),
+			},
+			want: FromValues([]int{1, 4, 8}, []int{2, 5, 9}),
+		},
+		"empty seq": {
+			seqs: []Seq[int]{
+				FromValues(1, 2, 3),
+				FromValues(4, 5, 6, 7),
+				Empty[int](),
+			},
+			want: Empty[[]int](),
+		},
+		"infinite seq": {
+			seqs: []Seq[int]{
+				FromValues(1, 2, 3),
+				FromValues(4, 5, 6, 7),
+				Repeat(0),
+			},
+			want: FromValues([]int{1, 4, 0}, []int{2, 5, 0}, []int{3, 6, 0}),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, ToSlice(testCase.want), ToSlice(ZipMany(testCase.seqs...)))
+		})
+	}
+}
+
+func TestZipWith(t *testing.T) {
+	testCases := map[string]struct {
+		seq1 Seq[int]
+		seq2 Seq[int]
+		want Seq[int]
+	}{
+		"empty seqs": {
+			seq1: Empty[int](),
+			seq2: Empty[int](),
+			want: Empty[int](),
+		},
+		"seqs of same size": {
+			seq1: FromValues(1, 2, 3),
+			seq2: FromValues(4, 5, 6),
+			want: FromValues(5, 7, 9),
+		},
+		"seqs of different size": {
+			seq1: FromValues(1, 2, 3),
+			seq2: FromValues(4, 5, 6, 7),
+			want: FromValues(5, 7, 9),
+		},
+		"empty seq": {
+			seq1: FromValues(1, 2, 3),
+			seq2: Empty[int](),
+			want: Empty[int](),
+		},
+		"infinite seq": {
+			seq1: FromValues(1, 2, 3),
+			seq2: Repeat(0),
+			want: FromValues(1, 2, 3),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, ToSlice(testCase.want), ToSlice(ZipWith(testCase.seq1, testCase.seq2, add)))
+		})
+	}
+}
