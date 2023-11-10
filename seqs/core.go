@@ -487,14 +487,15 @@ type Summable interface {
 //
 // If the source sequence has less then `n` elements the returned sequence will also have only that many elements
 func Take[E any](s Seq[E], n int) Seq[E] {
+	if n == 0 {
+		return Empty[E]()
+	}
+
 	forEachUntil := func(fn func(E) bool) {
-		i := 0
+		cnt := 0
 		s.ForEachUntil(func(e E) bool {
-			if i < n {
-				i++
-				return fn(e)
-			}
-			return true
+			cnt++
+			return fn(e) || cnt == n
 		})
 	}
 	if lener, ok := s.(Lener); ok {

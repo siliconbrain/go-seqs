@@ -682,6 +682,14 @@ func TestTake(t *testing.T) {
 			require.Equal(t, ToSlice(testCase.want), ToSlice(Take(testCase.seq, testCase.n)))
 		})
 	}
+	t.Run("takes only n", func(t *testing.T) {
+		require.Equal(t, []int{0, 1, 2}, ToSlice(Take(GenerateWithIndex(func(idx int) int {
+			if idx == 3 {
+				require.FailNow(t, "took more than required")
+			}
+			return idx
+		}), 3)))
+	})
 }
 
 func TestTakeWhile(t *testing.T) {
