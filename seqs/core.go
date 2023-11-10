@@ -2,7 +2,6 @@ package seqs
 
 import (
 	"slices"
-	"sync/atomic"
 )
 
 // Seq defines a minimal interface for a sequence of values
@@ -327,60 +326,56 @@ func RepeatN[E any](e E, n int) Seq[E] {
 
 // RoundRobin returns a sequence whose elements are obtained by alternately taking elements from the specified sequences in a round-robin fashion
 func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
-	switch l := len(seqs); l {
+	switch len(seqs) {
 	case 0:
 		return Empty[E]()
 	case 1:
 		return seqs[0]
-	default:
-		forEachUntil := func(fn func(E) bool) {
-			valChs := make([]chan E, l)
-			stopCh := make(chan struct{})
-			live := int32(l)
-			defer close(stopCh)
-			for i := range seqs {
-				seq := seqs[i]
-				valCh := make(chan E)
-				go func() {
-					seq.ForEachUntil(func(e E) bool {
-						select {
-						case <-stopCh:
-							return true
-						case valCh <- e:
-							return false
-						}
-					})
-					close(valCh)
-					atomic.AddInt32(&live, -1)
-				}()
-				valChs[i] = valCh
-			}
-			i := 0
-			for {
-				if atomic.LoadInt32(&live) == 0 {
-					return
-				}
-				if e, ok := <-valChs[i]; ok {
-					if fn(e) {
-						return
-					}
-				}
-				i = (i + 1) % l
-			}
-		}
-		if leners(seqs...) {
-			return seqFuncWithLen[E]{
-				forEachUntil: forEachUntil,
-				len: func() (l int) {
-					for _, seq := range seqs {
-						l += seq.(Lener).Len()
-					}
-					return
-				},
-			}
-		}
-		return SeqFunc(forEachUntil)
 	}
+
+	forEachUntil := func(fn func(E) bool) {
+		nextChs := make([]chan E, len(seqs))
+		moveNextChs := make([]chan struct{}, len(seqs))
+
+		for i := range seqs {
+			nextChs[i] = make(chan E)
+			moveNextChs[i] = make(chan struct{})
+
+			defer close(moveNextChs[i])
+
+			go iterate(seqs[i], nextChs[i], moveNextChs[i])
+		}
+
+		live := len(seqs)
+		for idx := 0; live > 0; idx = (idx + 1) % len(seqs) {
+			nextCh := nextChs[idx]
+			if nextCh == nil {
+				continue
+			}
+			moveNextChs[idx] <- struct{}{}
+			next, hasNext := <-nextCh
+			if !hasNext {
+				nextChs[idx] = nil
+				live--
+				continue
+			}
+			if fn(next) {
+				return
+			}
+		}
+	}
+	if leners(seqs...) {
+		return seqFuncWithLen[E]{
+			forEachUntil: forEachUntil,
+			len: func() (l int) {
+				for _, seq := range seqs {
+					l += seq.(Lener).Len()
+				}
+				return
+			},
+		}
+	}
+	return SeqFunc(forEachUntil)
 }
 
 // SeqFunc returns a sequence that has its ForEachUntil method implemented by the specified function

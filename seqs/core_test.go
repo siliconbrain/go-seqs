@@ -469,6 +469,9 @@ func TestRoundRobin(t *testing.T) {
 	t.Run("break early", func(t *testing.T) {
 		require.Equal(t, ToSlice(FromValues(1, 2, 3, 4, 2, 3)), ToSlice(Take(RoundRobin(RepeatN(1, 1), RepeatN(2, 2), RepeatN(3, 3), RepeatN(4, 4)), 6)))
 	})
+	t.Run("break even earlier", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(1, 2, 3)), ToSlice(Take(RoundRobin(RepeatN(1, 1), RepeatN(2, 2), RepeatN(3, 3), RepeatN(4, 4)), 3)))
+	})
 	t.Run("with infinite seq", func(t *testing.T) {
 		require.Equal(t, ToSlice(FromValues(1, 2, 42, 3, 4, 42, 42, 42)), ToSlice(Take(RoundRobin(FromValues(1, 3), FromValues(2, 4), Repeat(42)), 8)))
 	})
