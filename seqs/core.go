@@ -520,6 +520,8 @@ func TakeWhile[E any](s Seq[E], pred func(E) bool) Seq[E] {
 func ToSet[E comparable](seq Seq[E]) (res map[E]bool) {
 	if lener, ok := seq.(Lener); ok {
 		res = make(map[E]bool, lener.Len())
+	} else {
+		res = make(map[E]bool)
 	}
 	seq.ForEachUntil(func(e E) bool {
 		res[e] = true

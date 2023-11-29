@@ -747,6 +747,23 @@ func TestToSet(t *testing.T) {
 			seq:  FromValues(1, 2, 3, 4, 3, 2, 1),
 			want: map[int]bool{1: true, 2: true, 3: true, 4: true},
 		},
+		"seq without len": {
+			seq: SeqFunc(func(f func(int) bool) {
+				if f(1) {
+					return
+				}
+				if f(2) {
+					return
+				}
+				if f(1) {
+					return
+				}
+				if f(2) {
+					return
+				}
+			}),
+			want: map[int]bool{1: true, 2: true},
+		},
 	}
 	for name, testCase := range testCases {
 		testCase := testCase
