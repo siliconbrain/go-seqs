@@ -142,6 +142,15 @@ func FilterWithIndex[S Seq[E], E any](seq S, pred func(int, E) bool) Seq[E] {
 	})
 }
 
+// First returns the first element of the specified sequence and true, or the zero value of E and false if the sequence is empty.
+func First[S Seq[E], E any](seq S) (first E, hasFirst bool) {
+	seq.ForEachUntil(func(e E) bool {
+		first, hasFirst = e, true
+		return true
+	})
+	return
+}
+
 // Flatten returns a sequence that is the concatenation of sequences contained by the specified sequence
 //
 // The returned sequence never implements the Lener interface. Use Concat with ToSlice if you want the resulting sequence to implement Lener when possible.
@@ -256,6 +265,16 @@ func Intersperse[S Seq[E], E any](seq S, val E) Seq[E] {
 		}
 	}
 	return SeqFunc(forEachUntil)
+}
+
+// Last returns the last element of the specified sequence and true, or the zero value of E and false if the sequence is empty.
+//
+// Application to an infinite sequence will block indefinitely.
+func Last[S Seq[E], E any](seq S) (last E, hasLast bool) {
+	ForEach(seq, func(e E) {
+		last, hasLast = e, true
+	})
+	return
 }
 
 // Map returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence

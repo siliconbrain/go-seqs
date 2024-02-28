@@ -256,6 +256,43 @@ func TestFilter(t *testing.T) {
 	}
 }
 
+func TestFirst(t *testing.T) {
+	testCases := map[string]struct {
+		seq          Seq[int]
+		wantFirst    int
+		wantHasFirst bool
+	}{
+		"empty seq": {
+			seq:          Empty[int](),
+			wantFirst:    0,
+			wantHasFirst: false,
+		},
+		"singleton seq": {
+			seq:          FromValues(42),
+			wantFirst:    42,
+			wantHasFirst: true,
+		},
+		"multi-element seq": {
+			seq:          FromValues(1, 2, 3, 4),
+			wantFirst:    1,
+			wantHasFirst: true,
+		},
+		"infinite seq": {
+			seq:          GenerateWithIndex(func(idx int) int { return idx + 2 }),
+			wantFirst:    2,
+			wantHasFirst: true,
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			first, hasFirst := First(testCase.seq)
+			assert.Equal(t, testCase.wantFirst, first)
+			assert.Equal(t, testCase.wantHasFirst, hasFirst)
+		})
+	}
+}
+
 func TestFlatten(t *testing.T) {
 	testCases := map[string]struct {
 		seqs Seq[Seq[int]]
@@ -420,6 +457,38 @@ func TestIntersperse(t *testing.T) {
 	t.Run("infinite seq", func(t *testing.T) {
 		require.Equal(t, ToSlice(FromValues(1, 42, 1, 42, 1, 42)), ToSlice(Take(Intersperse(Repeat(1), 42), 6)))
 	})
+}
+
+func TestLast(t *testing.T) {
+	testCases := map[string]struct {
+		seq         Seq[int]
+		wantLast    int
+		wantHasLast bool
+	}{
+		"empty seq": {
+			seq:         Empty[int](),
+			wantLast:    0,
+			wantHasLast: false,
+		},
+		"singleton seq": {
+			seq:         FromValues(42),
+			wantLast:    42,
+			wantHasLast: true,
+		},
+		"multi-element seq": {
+			seq:         FromValues(1, 2, 3, 4),
+			wantLast:    4,
+			wantHasLast: true,
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			last, hasLast := Last(testCase.seq)
+			assert.Equal(t, testCase.wantLast, last)
+			assert.Equal(t, testCase.wantHasLast, hasLast)
+		})
+	}
 }
 
 func TestMap(t *testing.T) {
