@@ -25,11 +25,15 @@ type FiniteSeq[E any] interface {
 }
 
 // All returns true if the specified predicate returns true for all elements of the specified sequence
+//
+// Application to an infinite sequence will block indefinitely.
 func All[S Seq[E], E any](seq S, pred func(E) bool) (res bool) {
 	return And(Map(seq, pred))
 }
 
 // And returns true if all elements of the specified sequence are true, which includes the empty sequence
+//
+// Application to an infinite sequence will block indefinitely.
 func And[S Seq[bool]](seq S) bool {
 	res := true
 	ForEachWhile(seq, func(b bool) bool {
@@ -40,6 +44,8 @@ func And[S Seq[bool]](seq S) bool {
 }
 
 // Any returns true if the specified predicate returns true for any element of the specified sequence
+//
+// Application to an infinite sequence will block indefinitely.
 func Any[S Seq[E], E any](seq S, pred func(E) bool) (res bool) {
 	return Or(Map(seq, pred))
 }
@@ -91,6 +97,8 @@ func Concat[E any](seqs ...Seq[E]) Seq[E] {
 }
 
 // Count returns the number of elements in the specified sequence.
+//
+// Application to an infinite sequence will block indefinitely.
 func Count[S Seq[E], E any](seq S) int {
 	return Sum(Map(seq, func(E) int { return 1 }))
 }
@@ -170,6 +178,8 @@ func Flatten[SS Seq[S], S Seq[E], E any](seq SS) Seq[E] {
 }
 
 // ForEach calls the specified function for each element of the specified sequence
+//
+// Application to an infinite sequence will block indefinitely.
 func ForEach[S Seq[E], E any](seq S, fn func(E)) {
 	seq.ForEachUntil(func(e E) bool {
 		fn(e)
@@ -305,6 +315,8 @@ func MapWithIndex[S Seq[Src], Src any, Dst any](seq S, mapfn func(int, Src) Dst)
 }
 
 // Or returns true if any element of the specified sequence is true, which does not include the empty sequence
+//
+// Application to an infinite sequence will block indefinitely.
 func Or[S Seq[bool]](seq S) bool {
 	res := false
 	seq.ForEachUntil(func(b bool) bool {
@@ -314,13 +326,56 @@ func Or[S Seq[bool]](seq S) bool {
 	return res
 }
 
-// Reduce returns a value obtained by applying the specified function to an accumlator value (initialized with the specified seed value) and successive elements of the sequence
-func Reduce[S Seq[E], E any, A any](seq S, seed A, fn func(A, E) A) (res A) {
-	res = seed
+// PartialSums returns a sequence of the partial sums of the specified sequence.
+func PartialSums[S Seq[E], E Summable](seq S) Seq[E] {
+	return Reductions(seq, add)
+}
+
+// Reduce returns a value obtained by aggregating elements of the specified sequence using the specified operation.
+//
+// If the specified sequence is empty, the zero value of E will be returned.
+// If the specified sequence has a single element only, that element will be returned.
+//
+// Application to an infinite sequence will block indefinitely.
+func Reduce[S Seq[E], E any](seq S, op func(E, E) E) (res E) {
+	first := true
 	ForEach(seq, func(e E) {
-		res = fn(res, e)
+		if first {
+			first = false
+			res = e
+		} else {
+			res = op(res, e)
+		}
 	})
 	return
+}
+
+// Reductions returns the sequence of intermediate values of the reduction of the specified sequence with the specified operation.
+//
+// If the specified sequence is empty, the returned sequence will be empty.
+// If the specified sequence has a single element only, a sequence containing only that element will be returned.
+func Reductions[S Seq[E], E any](seq S, op func(E, E) E) Seq[E] {
+	forEachUntil := func(fn func(E) bool) {
+		var acc E
+		first := true
+		seq.ForEachUntil(func(e E) bool {
+			if first {
+				first = false
+				acc = e
+			} else {
+				acc = op(acc, e)
+			}
+			return fn(acc)
+		})
+	}
+
+	if lener, ok := asLener(seq); ok {
+		return seqFuncWithLen[E]{
+			forEachUntil: forEachUntil,
+			len:          lener.Len, // same length as seq
+		}
+	}
+	return SeqFunc(forEachUntil)
 }
 
 // Repeat returns an infinite sequence that repeats the specified value
@@ -398,6 +453,41 @@ func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
 				}
 				return
 			},
+		}
+	}
+	return SeqFunc(forEachUntil)
+}
+
+// SeededReduce returns a value obtained by applying the specified function to an accumlator value (initialized to the specified seed value) and successive elements of the sequence
+//
+// Application to an infinite sequence will block indefinitely.
+func SeededReduce[S Seq[E], E any, A any](seq S, seed A, op func(A, E) A) (res A) {
+	res = seed
+	ForEach(seq, func(e E) {
+		res = op(res, e)
+	})
+	return
+}
+
+// SeededReductions returns the sequence of intermediate values of the reduction of the specified sequence by the specified operation starting with the specified seed value.
+//
+// The returned sequence always has the seed value as its first element.
+func SeededReductions[S Seq[E], E any, A any](seq S, seed A, op func(A, E) A) Seq[A] {
+	forEachUntil := func(fn func(A) bool) {
+		acc := seed
+		if fn(acc) {
+			return
+		}
+		seq.ForEachUntil(func(e E) bool {
+			acc = op(acc, e)
+			return fn(acc)
+		})
+	}
+
+	if lener, ok := asLener(seq); ok {
+		return seqFuncWithLen[A]{
+			forEachUntil: forEachUntil,
+			len:          func() int { return 1 + lener.Len() },
 		}
 	}
 	return SeqFunc(forEachUntil)
@@ -494,13 +584,15 @@ func SlidingWindow[S Seq[E], E any](seq S, count int, skip int) (res Seq[[]E]) {
 }
 
 // Sum returns the sum of the specified sequence's elements.
+//
+// Application to an infinite sequence will block indefinitely.
 func Sum[S Seq[E], E Summable](seq S) E {
-	return Reduce(seq, 0, add[E])
+	return Reduce(seq, add)
 }
 
 // Summable lists types that support addition using the + operator
 type Summable interface {
-	~float32 | ~float64 | ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
+	~float32 | ~float64 | ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | string
 }
 
 // Take returns a sequence of the first `n` number of elements of the specified sequence
@@ -542,6 +634,8 @@ func TakeWhile[S Seq[E], E any](s S, pred func(E) bool) Seq[E] {
 }
 
 // ToSet returns a set (boolean valued map) created from the elements of the specified sequence
+//
+// Application to an infinite sequence will block indefinitely.
 func ToSet[S Seq[E], E comparable](seq S) (res map[E]bool) {
 	if lener, ok := asLener(seq); ok {
 		res = make(map[E]bool, lener.Len())

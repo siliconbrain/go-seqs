@@ -506,13 +506,66 @@ func TestMap(t *testing.T) {
 	})
 }
 
-func TestReduce(t *testing.T) {
-	t.Run("empty seq", func(t *testing.T) {
-		require.Equal(t, 42, Reduce(Empty[int](), 42, func(a int, e int) int { return a + e }))
-	})
-	t.Run("offset sum", func(t *testing.T) {
-		require.Equal(t, 20, Reduce(FromValues(1, 2, 3, 4), 10, func(a int, e int) int { return a + e }))
-	})
+func TestPartialSums(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		want Seq[int]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			want: Empty[int](),
+		},
+		"singleton seq": {
+			seq:  FromValues(42),
+			want: FromValues(42),
+		},
+		"multi-element seq": {
+			seq:  FromValues(1, 2, 3, 4),
+			want: FromValues(1, 3, 6, 10),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, ToSlice(testCase.want), ToSlice(PartialSums(testCase.seq)))
+		})
+	}
+}
+
+func TestReductions(t *testing.T) {
+	const maxSamples = 100
+	testCases := map[string]struct {
+		seq  Seq[int]
+		op   func(int, int) int
+		want Seq[int]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			op:   add[int],
+			want: Empty[int](),
+		},
+		"singleton seq": {
+			seq:  FromValues(42),
+			op:   add[int],
+			want: FromValues(42),
+		},
+		"multi-element seq": {
+			seq:  FromValues(1, 2, 3, 4),
+			op:   add[int],
+			want: FromValues(1, 3, 6, 10),
+		},
+		"infinite seq": {
+			seq:  Repeat(1),
+			op:   add[int],
+			want: GenerateWithIndex(func(idx int) int { return idx + 1 }),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, ToSlice(Take(testCase.want, maxSamples)), ToSlice(Take(Reductions(testCase.seq, testCase.op), maxSamples)))
+		})
+	}
 }
 
 func TestRepeat(t *testing.T) {
@@ -565,6 +618,60 @@ func TestRoundRobin(t *testing.T) {
 	})
 	t.Run("with infinite seq", func(t *testing.T) {
 		require.Equal(t, ToSlice(FromValues(1, 2, 42, 3, 4, 42, 42, 42)), ToSlice(Take(RoundRobin(FromValues(1, 3), FromValues(2, 4), Repeat(42)), 8)))
+	})
+}
+
+func TestSeededReduce(t *testing.T) {
+	t.Run("empty seq", func(t *testing.T) {
+		require.Equal(t, 42, SeededReduce(Empty[int](), 42, func(a int, e int) int { return a + e }))
+	})
+	t.Run("offset sum", func(t *testing.T) {
+		require.Equal(t, 20, SeededReduce(FromValues(1, 2, 3, 4), 10, func(a int, e int) int { return a + e }))
+	})
+}
+
+func TestSeededReductions(t *testing.T) {
+	const maxSamples = 100
+	testCases := map[string]struct {
+		seq  Seq[int]
+		seed int
+		op   func(int, int) int
+		want Seq[int]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			seed: 42,
+			op:   add[int],
+			want: FromValues(42),
+		},
+		"singleton seq": {
+			seq:  FromValues(42),
+			seed: 21,
+			op:   add[int],
+			want: FromValues(21, 63),
+		},
+		"multi-element seq": {
+			seq:  FromValues(1, 2, 3, 4),
+			seed: 1,
+			op:   add[int],
+			want: FromValues(1, 2, 4, 7, 11),
+		},
+		"infinite seq": {
+			seq:  Repeat(1),
+			seed: 0,
+			op:   add[int],
+			want: GenerateWithIndex(func(idx int) int { return idx }),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, ToSlice(Take(testCase.want, maxSamples)), ToSlice(Take(SeededReductions(testCase.seq, testCase.seed, testCase.op), maxSamples)))
+		})
+	}
+
+	t.Run("break early", func(t *testing.T) {
+		assert.Equal(t, []int{42}, ToSlice(Take(SeededReductions(Repeat(1), 42, add), 1)))
 	})
 }
 
