@@ -291,7 +291,7 @@ func TestFlatten(t *testing.T) {
 	for name, testCase := range testCases {
 		testCase := testCase
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(Flatten[int](testCase.seqs)))
+			require.Equal(t, ToSlice(testCase.want), ToSlice(Flatten(testCase.seqs)))
 		})
 	}
 }
