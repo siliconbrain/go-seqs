@@ -90,6 +90,11 @@ func Concat[E any](seqs ...Seq[E]) Seq[E] {
 	}
 }
 
+// Count returns the number of elements in the specified sequence.
+func Count[E any](seq Seq[E]) int {
+	return Sum(Map(seq, func(E) int { return 1 }))
+}
+
 // Cycle returns an (almost always) infinite sequence that cyclically repeats the elements of the specified sequence
 //
 // If the specified sequence is empty (or becomes empty at any point) the returned sequence becomes empty to avoid an unbreakable infinite loop.

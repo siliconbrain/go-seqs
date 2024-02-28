@@ -163,6 +163,28 @@ func TestConcat(t *testing.T) {
 	})
 }
 
+func TestCount(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		want int
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			want: 0,
+		},
+		"non-empty seq": {
+			seq:  FromValues(1, 2, 3),
+			want: 3,
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, testCase.want, Count(testCase.seq))
+		})
+	}
+}
+
 func TestCycle(t *testing.T) {
 	testCases := map[string]struct {
 		seq  Seq[int]
