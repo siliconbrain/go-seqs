@@ -378,6 +378,20 @@ func Reductions[S Seq[E], E any](seq S, op func(E, E) E) Seq[E] {
 	return SeqFunc(forEachUntil)
 }
 
+// Reject returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `false`
+func Reject[S Seq[E], E any](seq S, pred func(E) bool) Seq[E] {
+	return RejectWithIndex(seq, func(_ int, e E) bool {
+		return pred(e)
+	})
+}
+
+// RejectWithIndex returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `false`
+func RejectWithIndex[S Seq[E], E any](seq S, pred func(int, E) bool) Seq[E] {
+	return FilterWithIndex(seq, func(i int, e E) bool {
+		return !pred(i, e)
+	})
+}
+
 // Repeat returns an infinite sequence that repeats the specified value
 func Repeat[E any](e E) Seq[E] {
 	return SeqFunc(func(fn func(E) bool) {

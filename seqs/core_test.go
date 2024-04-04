@@ -568,6 +568,41 @@ func TestReductions(t *testing.T) {
 	}
 }
 
+func TestReject(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		pred func(int) bool
+		want Seq[int]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			pred: func(i int) bool { return true },
+			want: Empty[int](),
+		},
+		"every other": {
+			seq:  FromValues(1, 2, 3, 4),
+			pred: func(i int) bool { return i%2 == 0 },
+			want: FromValues(1, 3),
+		},
+		"take all": {
+			seq:  FromValues(1, 2, 3, 4),
+			pred: func(i int) bool { return false },
+			want: FromValues(1, 2, 3, 4),
+		},
+		"take none": {
+			seq:  FromValues(1, 2, 3, 4),
+			pred: func(i int) bool { return true },
+			want: Empty[int](),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(Reject(testCase.seq, testCase.pred)))
+		})
+	}
+}
+
 func TestRepeat(t *testing.T) {
 	require.Equal(t, ToSlice(RepeatN(42, 6)), ToSlice(Take(Repeat(42), 6)))
 }
