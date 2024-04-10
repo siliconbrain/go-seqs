@@ -459,6 +459,32 @@ func TestIntersperse(t *testing.T) {
 	})
 }
 
+func TestIsEmpty(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		want bool
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			want: true,
+		},
+		"some seq": {
+			seq:  FromValues(1, 2, 3),
+			want: false,
+		},
+		"infinite seq": {
+			seq:  Repeat(42),
+			want: false,
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, testCase.want, IsEmpty(testCase.seq))
+		})
+	}
+}
+
 func TestLast(t *testing.T) {
 	testCases := map[string]struct {
 		seq         Seq[int]

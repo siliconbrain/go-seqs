@@ -277,6 +277,15 @@ func Intersperse[S Seq[E], E any](seq S, val E) Seq[E] {
 	return SeqFunc(forEachUntil)
 }
 
+// IsEmpty returns true if the specified sequence has no elements; otherwise, it returns false.
+func IsEmpty[S Seq[E], E any](seq S) bool {
+	if lener, ok := asLener(seq); ok {
+		return lener.Len() == 0
+	}
+	_, hasFirst := First(seq)
+	return !hasFirst
+}
+
 // Last returns the last element of the specified sequence and true, or the zero value of E and false if the sequence is empty.
 //
 // Application to an infinite sequence will block indefinitely.
