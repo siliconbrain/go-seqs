@@ -69,7 +69,7 @@ func Concat[E any](seqs ...Seq[E]) Seq[E] {
 	case 1:
 		return seqs[0]
 	default:
-		forEachUntil := func(yield func(E) bool) {
+		res := SeqFunc(func(yield func(E) bool) {
 			brk := false
 			for _, seq := range seqs {
 				seq.ForEachUntil(func(e E) bool {
@@ -80,19 +80,16 @@ func Concat[E any](seqs ...Seq[E]) Seq[E] {
 					return
 				}
 			}
-		}
+		})
 		if leners(seqs...) {
-			return seqFuncWithLen[E]{
-				forEachUntil: forEachUntil,
-				len: func() (l int) {
-					for _, seq := range seqs {
-						l += seq.(Lener).Len()
-					}
-					return
-				},
-			}
+			res = withLenFunc(res, func() (l int) {
+				for _, seq := range seqs {
+					l += seq.(Lener).Len()
+				}
+				return
+			})
 		}
-		return SeqFunc(forEachUntil)
+		return res
 	}
 }
 
@@ -255,7 +252,7 @@ func GenerateWithIndex[E any](gen func(idx int) E) Seq[E] {
 
 // Intersperse returns a sequence whose elements are the same as the specified sequence's but interspersed with the specified value
 func Intersperse[S Seq[E], E any](seq S, val E) Seq[E] {
-	forEachUntil := func(yield func(E) bool) {
+	res := SeqFunc(func(yield func(E) bool) {
 		first := true
 		seq.ForEachUntil(func(e E) bool {
 			if !first {
@@ -267,14 +264,11 @@ func Intersperse[S Seq[E], E any](seq S, val E) Seq[E] {
 			}
 			return yield(e)
 		})
-	}
+	})
 	if lener, ok := asLener(seq); ok {
-		return seqFuncWithLen[E]{
-			forEachUntil: forEachUntil,
-			len:          func() int { return max(lener.Len()*2-1, 0) },
-		}
+		res = withLenFunc(res, func() int { return max(lener.Len()*2-1, 0) })
 	}
-	return SeqFunc(forEachUntil)
+	return res
 }
 
 // IsEmpty returns true if the specified sequence has no elements; otherwise, it returns false.
@@ -305,22 +299,19 @@ func Map[S Seq[Src], Src any, Dst any](seq S, mapfn func(Src) Dst) Seq[Dst] {
 
 // MapWithIndex returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence along with their indices
 func MapWithIndex[S Seq[Src], Src any, Dst any](seq S, mapfn func(int, Src) Dst) Seq[Dst] {
-	forEachUntil := func(yield func(Dst) bool) {
+	res := SeqFunc(func(yield func(Dst) bool) {
 		idx := 0
 		seq.ForEachUntil(func(src Src) bool {
 			res := yield(mapfn(idx, src))
 			idx++
 			return res
 		})
-	}
+	})
 
 	if lener, ok := asLener(seq); ok {
-		return seqFuncWithLen[Dst]{
-			forEachUntil: forEachUntil,
-			len:          lener.Len, // same length as seq
-		}
+		res = withLenFunc(res, lener.Len) // same length as seq
 	}
-	return SeqFunc(forEachUntil)
+	return res
 }
 
 // Or returns true if any element of the specified sequence is true, which does not include the empty sequence
@@ -364,7 +355,7 @@ func Reduce[S Seq[E], E any](seq S, op func(E, E) E) (res E) {
 // If the specified sequence is empty, the returned sequence will be empty.
 // If the specified sequence has a single element only, a sequence containing only that element will be returned.
 func Reductions[S Seq[E], E any](seq S, op func(E, E) E) Seq[E] {
-	forEachUntil := func(yield func(E) bool) {
+	res := SeqFunc(func(yield func(E) bool) {
 		var acc E
 		first := true
 		seq.ForEachUntil(func(e E) bool {
@@ -376,15 +367,12 @@ func Reductions[S Seq[E], E any](seq S, op func(E, E) E) Seq[E] {
 			}
 			return yield(acc)
 		})
-	}
+	})
 
 	if lener, ok := asLener(seq); ok {
-		return seqFuncWithLen[E]{
-			forEachUntil: forEachUntil,
-			len:          lener.Len, // same length as seq
-		}
+		res = withLenFunc(res, lener.Len) // same length as seq
 	}
-	return SeqFunc(forEachUntil)
+	return res
 }
 
 // Reject returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `false`
@@ -415,16 +403,16 @@ func Repeat[E any](e E) Seq[E] {
 // Repeat returns a finite sequence that repeats the specified value `n` times
 func RepeatN[E any](e E, n int) Seq[E] {
 	// NOTE: cannot implement as Take(Repeat(e), n) because Take is (currently) unable to detect that its sequence is infinite an thus provide a correct length
-	return seqFuncWithLen[E]{
-		forEachUntil: func(yield func(E) bool) {
+	return withLenFunc(
+		SeqFunc(func(yield func(E) bool) {
 			for i := 0; i < n; i++ {
 				if yield(e) {
 					return
 				}
 			}
-		},
-		len: func() int { return n },
-	}
+		}),
+		func() int { return n },
+	)
 }
 
 // RoundRobin returns a sequence whose elements are obtained by alternately taking elements from the specified sequences in a round-robin fashion
@@ -436,7 +424,7 @@ func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
 		return seqs[0]
 	}
 
-	forEachUntil := func(yield func(E) bool) {
+	res := SeqFunc(func(yield func(E) bool) {
 		nextChs := make([]chan E, len(seqs))
 		moveNextChs := make([]chan struct{}, len(seqs))
 
@@ -466,19 +454,16 @@ func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
 				return
 			}
 		}
-	}
+	})
 	if leners(seqs...) {
-		return seqFuncWithLen[E]{
-			forEachUntil: forEachUntil,
-			len: func() (l int) {
-				for _, seq := range seqs {
-					l += seq.(Lener).Len()
-				}
-				return
-			},
-		}
+		res = withLenFunc(res, func() (l int) {
+			for _, seq := range seqs {
+				l += seq.(Lener).Len()
+			}
+			return
+		})
 	}
-	return SeqFunc(forEachUntil)
+	return res
 }
 
 // SeededReduce returns a value obtained by applying the specified function to an accumlator value (initialized to the specified seed value) and successive elements of the sequence
@@ -496,7 +481,7 @@ func SeededReduce[S Seq[E], E any, A any](seq S, seed A, op func(A, E) A) (res A
 //
 // The returned sequence always has the seed value as its first element.
 func SeededReductions[S Seq[E], E any, A any](seq S, seed A, op func(A, E) A) Seq[A] {
-	forEachUntil := func(yield func(A) bool) {
+	res := SeqFunc(func(yield func(A) bool) {
 		acc := seed
 		if yield(acc) {
 			return
@@ -505,15 +490,12 @@ func SeededReductions[S Seq[E], E any, A any](seq S, seed A, op func(A, E) A) Se
 			acc = op(acc, e)
 			return yield(acc)
 		})
-	}
+	})
 
 	if lener, ok := asLener(seq); ok {
-		return seqFuncWithLen[A]{
-			forEachUntil: forEachUntil,
-			len:          func() int { return 1 + lener.Len() },
-		}
+		res = withLenFunc(res, func() int { return 1 + lener.Len() })
 	}
-	return SeqFunc(forEachUntil)
+	return res
 }
 
 // SeqFunc returns a sequence that has its ForEachUntil method implemented by the specified function
@@ -528,7 +510,7 @@ func Skip[S Seq[E], E any](s S, n int) Seq[E] {
 	if n == 0 {
 		return s
 	}
-	forEachUntil := func(yield func(E) bool) {
+	res := SeqFunc(func(yield func(E) bool) {
 		i := 0
 		s.ForEachUntil(func(e E) bool {
 			if i < n {
@@ -537,14 +519,11 @@ func Skip[S Seq[E], E any](s S, n int) Seq[E] {
 			}
 			return yield(e)
 		})
-	}
+	})
 	if lener, ok := asLener(s); ok {
-		return seqFuncWithLen[E]{
-			forEachUntil: forEachUntil,
-			len:          func() int { return max(lener.Len()-n, 0) },
-		}
+		res = withLenFunc(res, func() int { return max(lener.Len()-n, 0) })
 	}
-	return SeqFunc(forEachUntil)
+	return res
 }
 
 // SkipWhile returns a sequence that omits elements of the specified sequence while the specified predicate returns `true`
@@ -566,14 +545,14 @@ func SkipWhile[S Seq[E], E any](s S, pred func(E) bool) Seq[E] {
 
 // SlidingWindow returns a sequence of windows (slices of count length) containing the elements of the specified sequence.
 // Windows start after each other with a distance of skip.
-func SlidingWindow[S Seq[E], E any](seq S, count int, skip int) (res Seq[[]E]) {
+func SlidingWindow[S Seq[E], E any](seq S, count int, skip int) Seq[[]E] {
 	if count < 1 {
 		panic("count must be positive")
 	}
 	if skip < 1 {
 		panic("skip must be positive")
 	}
-	forEachUntil := func(yield func([]E) bool) {
+	res := SeqFunc(func(yield func([]E) bool) {
 		shift := min(skip, count)
 		ignore := skip - shift
 
@@ -594,16 +573,11 @@ func SlidingWindow[S Seq[E], E any](seq S, count int, skip int) (res Seq[[]E]) {
 			}
 			return false
 		})
-	}
+	})
 	if lener, ok := asLener(seq); ok {
-		return seqFuncWithLen[[]E]{
-			forEachUntil: forEachUntil,
-			len: func() int {
-				return (lener.Len() - count + 1) / skip
-			},
-		}
+		res = withLenFunc(res, func() int { return (lener.Len() - count + 1) / skip })
 	}
-	return SeqFunc(forEachUntil)
+	return res
 }
 
 // Sum returns the sum of the specified sequence's elements.
@@ -626,20 +600,17 @@ func Take[S Seq[E], E any](s S, n int) Seq[E] {
 		return Empty[E]()
 	}
 
-	forEachUntil := func(yield func(E) bool) {
+	res := SeqFunc(func(yield func(E) bool) {
 		cnt := 0
 		s.ForEachUntil(func(e E) bool {
 			cnt++
 			return yield(e) || cnt == n
 		})
-	}
+	})
 	if lener, ok := asLener(s); ok {
-		return seqFuncWithLen[E]{
-			forEachUntil: forEachUntil,
-			len:          func() int { return min(lener.Len(), n) },
-		}
+		res = withLenFunc(res, func() int { return min(lener.Len(), n) })
 	}
-	return SeqFunc(forEachUntil)
+	return res
 }
 
 // TakeWhile returns a sequence of the first elements of the specified sequence while the specified predicate returns `true`
@@ -695,7 +666,7 @@ func ZipMany[E any](seqs ...Seq[E]) Seq[[]E] {
 		return Map(seqs[0], func(e E) []E { return []E{e} })
 	}
 
-	forEachUntil := func(yield func([]E) bool) {
+	res := SeqFunc(func(yield func([]E) bool) {
 		nextChs := make([]chan E, len(seqs))
 		moveNextChs := make([]chan struct{}, len(seqs))
 
@@ -725,24 +696,21 @@ func ZipMany[E any](seqs ...Seq[E]) Seq[[]E] {
 				return
 			}
 		}
-	}
+	})
 	if leners(seqs...) {
-		return seqFuncWithLen[[]E]{
-			forEachUntil: forEachUntil,
-			len: func() (length int) {
-				for _, seq := range seqs {
-					length = min(length, seq.(Lener).Len())
-				}
-				return
-			},
-		}
+		res = withLenFunc(res, func() (length int) {
+			for _, seq := range seqs {
+				length = min(length, seq.(Lener).Len())
+			}
+			return
+		})
 	}
-	return SeqFunc(forEachUntil)
+	return res
 }
 
 // ZipWith returns a sequence containing results of the specified merge function applied to elements of the same index from both specified sequences
 func ZipWith[S1 Seq[E1], S2 Seq[E2], E1 any, E2 any, T any](seq1 S1, seq2 S2, merge func(E1, E2) T) Seq[T] {
-	forEachUntil := func(yield func(T) bool) {
+	res := SeqFunc(func(yield func(T) bool) {
 		nextCh1, nextCh2 := make(chan E1), make(chan E2)
 		moveNextCh1, moveNextCh2 := make(chan struct{}), make(chan struct{})
 
@@ -764,16 +732,13 @@ func ZipWith[S1 Seq[E1], S2 Seq[E2], E1 any, E2 any, T any](seq1 S1, seq2 S2, me
 				return
 			}
 		}
-	}
+	})
 	if lener1, ok := asLener(seq1); ok {
 		if lener2, ok := asLener(seq2); ok {
-			return seqFuncWithLen[T]{
-				forEachUntil: forEachUntil,
-				len:          func() int { return min(lener1.Len(), lener2.Len()) },
-			}
+			res = withLenFunc(res, func() int { return min(lener1.Len(), lener2.Len()) })
 		}
 	}
-	return SeqFunc(forEachUntil)
+	return res
 }
 
 func iterate[E any](seq Seq[E], nextCh chan<- E, moveNextCh <-chan struct{}) {
@@ -803,19 +768,6 @@ type seqFunc[E any] func(yield func(E) bool)
 
 func (s seqFunc[E]) ForEachUntil(yield func(E) bool) {
 	s(yield)
-}
-
-type seqFuncWithLen[E any] struct {
-	forEachUntil seqFunc[E]
-	len          func() int
-}
-
-func (s seqFuncWithLen[E]) ForEachUntil(yield func(E) bool) {
-	s.forEachUntil(yield)
-}
-
-func (s seqFuncWithLen[E]) Len() int {
-	return s.len()
 }
 
 type sliceSeq[E any] []E
@@ -862,4 +814,20 @@ func leners[E any](seqs ...Seq[E]) bool {
 		}
 	}
 	return true
+}
+
+func withLenFunc[E any](seq Seq[E], lenFn func() int) FiniteSeq[E] {
+	return struct {
+		Seq[E]
+		lenFunc
+	}{
+		Seq:     seq,
+		lenFunc: lenFn,
+	}
+}
+
+type lenFunc func() int
+
+func (fn lenFunc) Len() int {
+	return fn()
 }
