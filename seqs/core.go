@@ -6,7 +6,7 @@ import (
 
 // Seq defines a minimal interface for a sequence of values
 type Seq[E any] interface {
-	// ForEachUntil calles the specified function for each sequence element until the function returns `true`
+	// ForEachUntil calls the specified function for each sequence element until the function returns `true`
 	ForEachUntil(yield func(E) bool)
 }
 
