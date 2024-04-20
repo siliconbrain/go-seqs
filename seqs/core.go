@@ -81,7 +81,7 @@ func Concat[E any](seqs ...Seq[E]) Seq[E] {
 				}
 			}
 		})
-		if leners(seqs...) {
+		if areLeners(seqs...) {
 			res = withLenFunc(res, func() (l int) {
 				for _, seq := range seqs {
 					l += seq.(Lener).Len()
@@ -455,7 +455,7 @@ func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
 			}
 		}
 	})
-	if leners(seqs...) {
+	if areLeners(seqs...) {
 		res = withLenFunc(res, func() (l int) {
 			for _, seq := range seqs {
 				l += seq.(Lener).Len()
@@ -697,7 +697,7 @@ func ZipMany[E any](seqs ...Seq[E]) Seq[[]E] {
 			}
 		}
 	})
-	if leners(seqs...) {
+	if areLeners(seqs...) {
 		res = withLenFunc(res, func() (length int) {
 			for _, seq := range seqs {
 				length = min(length, seq.(Lener).Len())
@@ -807,7 +807,7 @@ func asLener(v any) (Lener, bool) {
 	return lener, ok
 }
 
-func leners[E any](seqs ...Seq[E]) bool {
+func areLeners[E any](seqs ...Seq[E]) bool {
 	for _, seq := range seqs {
 		if _, ok := seq.(Lener); !ok {
 			return false
