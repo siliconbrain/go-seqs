@@ -11,3 +11,7 @@ func Test_pairUnwrap(t *testing.T) {
 	assert.Equal(t, 42, fst)
 	assert.Equal(t, "42", snd)
 }
+
+func Test_first(t *testing.T) {
+	assert.Equal(t, 42, first(pairOf(42, "not 42")))
+}

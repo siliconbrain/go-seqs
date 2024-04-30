@@ -146,24 +146,19 @@ func Enumerate[S Seq[E], E any](seq S) Seq[Pair[int, E]] {
 
 // Filter returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `true`
 func Filter[S Seq[E], E any](seq S, pred func(E) bool) Seq[E] {
-	return FilterWithIndex(seq, func(_ int, e E) bool {
-		return pred(e)
-	})
-}
-
-// FilterWithIndex returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `true`
-func FilterWithIndex[S Seq[E], E any](seq S, pred func(int, E) bool) Seq[E] {
 	return SeqFunc(func(yield func(E) bool) {
-		idx := 0
 		seq.ForEachUntil(func(e E) bool {
-			cond := pred(idx, e)
-			idx++
-			if cond {
+			if pred(e) {
 				return yield(e)
 			}
 			return false
 		})
 	})
+}
+
+// FilterWithIndex returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `true`
+func FilterWithIndex[S Seq[E], E any](seq S, pred func(int, E) bool) Seq[E] {
+	return Map(Filter(Enumerate(seq), func(p Pair[int, E]) bool { return pred(p.Unwrap()) }), second)
 }
 
 // First returns the first element of the specified sequence and true, or the zero value of E and false if the sequence is empty.
@@ -205,20 +200,12 @@ func ForEach[S Seq[E], E any](seq S, yield func(E)) {
 
 // ForEachUntilWithIndex calls the specified function for each element of the specified sequence along with its index until the function returns `true`
 func ForEachUntilWithIndex[S Seq[E], E any](seq S, yield func(int, E) bool) {
-	idx := 0
-	seq.ForEachUntil(func(e E) bool {
-		res := yield(idx, e)
-		idx++
-		return res
-	})
+	Enumerate(seq).ForEachUntil(func(p Pair[int, E]) bool { return yield(p.Unwrap()) })
 }
 
 // ForEachWithIndex calls the specified function for each element of the specified sequence along with its index
 func ForEachWithIndex[S Seq[E], E any](seq S, yield func(int, E)) {
-	ForEachUntilWithIndex(seq, func(i int, e E) bool {
-		yield(i, e)
-		return false
-	})
+	ForEach(Enumerate(seq), func(p Pair[int, E]) { yield(p.Unwrap()) })
 }
 
 // ForEachWhile calls the specified function for each element of the specified sequence while the function returns `true`
@@ -230,12 +217,7 @@ func ForEachWhile[S Seq[E], E any](seq S, yield func(E) bool) {
 
 // ForEachWhileWithIndex calls the specified function for each element of the specified sequence along with its index while the function returns `true`
 func ForEachWhileWithIndex[S Seq[E], E any](seq S, yield func(int, E) bool) {
-	idx := 0
-	ForEachWhile(seq, func(e E) bool {
-		res := yield(idx, e)
-		idx++
-		return res
-	})
+	ForEachWhile(Enumerate(seq), func(p Pair[int, E]) bool { return yield(p.Unwrap()) })
 }
 
 // FromValues returns a sequence made up of the specified values
@@ -311,19 +293,9 @@ func Last[S Seq[E], E any](seq S) (last E, hasLast bool) {
 
 // Map returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence
 func Map[S Seq[Src], Src any, Dst any](seq S, mapfn func(Src) Dst) Seq[Dst] {
-	return MapWithIndex(seq, func(_ int, e Src) Dst {
-		return mapfn(e)
-	})
-}
-
-// MapWithIndex returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence along with their indices
-func MapWithIndex[S Seq[Src], Src any, Dst any](seq S, mapfn func(int, Src) Dst) Seq[Dst] {
 	res := SeqFunc(func(yield func(Dst) bool) {
-		idx := 0
 		seq.ForEachUntil(func(src Src) bool {
-			res := yield(mapfn(idx, src))
-			idx++
-			return res
+			return yield(mapfn(src))
 		})
 	})
 
@@ -331,6 +303,11 @@ func MapWithIndex[S Seq[Src], Src any, Dst any](seq S, mapfn func(int, Src) Dst)
 		res = withLenFunc(res, lener.Len) // same length as seq
 	}
 	return res
+}
+
+// MapWithIndex returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence along with their indices
+func MapWithIndex[S Seq[Src], Src any, Dst any](seq S, mapfn func(int, Src) Dst) Seq[Dst] {
+	return Map(Enumerate(seq), func(p Pair[int, Src]) Dst { return mapfn(p.Unwrap()) })
 }
 
 // Or returns true if any element of the specified sequence is true, which does not include the empty sequence
@@ -396,16 +373,12 @@ func Reductions[S Seq[E], E any](seq S, op func(E, E) E) Seq[E] {
 
 // Reject returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `false`
 func Reject[S Seq[E], E any](seq S, pred func(E) bool) Seq[E] {
-	return RejectWithIndex(seq, func(_ int, e E) bool {
-		return pred(e)
-	})
+	return Filter(seq, func(e E) bool { return !pred(e) })
 }
 
 // RejectWithIndex returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `false`
 func RejectWithIndex[S Seq[E], E any](seq S, pred func(int, E) bool) Seq[E] {
-	return FilterWithIndex(seq, func(i int, e E) bool {
-		return !pred(i, e)
-	})
+	return Map(Reject(Enumerate(seq), func(p Pair[int, E]) bool { return pred(p.Unwrap()) }), second)
 }
 
 // Repeat returns an infinite sequence that repeats the specified value

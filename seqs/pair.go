@@ -19,3 +19,13 @@ func pairOf[First, Second any](first First, second Second) Pair[First, Second] {
 		Second: second,
 	}
 }
+
+func first[P Pair[First, Second], First, Second any](pair P) First {
+	first, _ := pair.Unwrap()
+	return first
+}
+
+func second[P Pair[First, Second], First, Second any](pair P) Second {
+	_, second := pair.Unwrap()
+	return second
+}

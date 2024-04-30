@@ -282,6 +282,41 @@ func TestFilter(t *testing.T) {
 	}
 }
 
+func TestFilterWithIndex(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		pred func(int, int) bool
+		want Seq[int]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			pred: func(idx int, itm int) bool { return true },
+			want: Empty[int](),
+		},
+		"every other": {
+			seq:  FromValues(1, 2, 3, 4),
+			pred: func(idx int, itm int) bool { return idx%2 == 0 },
+			want: FromValues(1, 3),
+		},
+		"take all": {
+			seq:  FromValues(1, 2, 3, 4),
+			pred: func(idx int, itm int) bool { return true },
+			want: FromValues(1, 2, 3, 4),
+		},
+		"take none": {
+			seq:  FromValues(1, 2, 3, 4),
+			pred: func(idx int, itm int) bool { return false },
+			want: Empty[int](),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(FilterWithIndex(testCase.seq, testCase.pred)))
+		})
+	}
+}
+
 func TestFirst(t *testing.T) {
 	testCases := map[string]struct {
 		seq          Seq[int]
@@ -363,6 +398,16 @@ func TestForEachWithIndex(t *testing.T) {
 	ForEachWithIndex(FromValues(1, 2, 3, 4), func(i int, e int) {
 		require.Equal(t, i, e-1)
 	})
+}
+
+func TestForEachUntilWithIndex(t *testing.T) {
+	var vals []int
+	ForEachUntilWithIndex(FromValues(1, 2, 3, 4), func(i int, e int) bool {
+		require.Equal(t, i, e-1)
+		vals = append(vals, e)
+		return len(vals) > 2
+	})
+	require.Equal(t, []int{1, 2, 3}, vals)
 }
 
 func TestForEachWhile(t *testing.T) {
@@ -558,6 +603,21 @@ func TestMap(t *testing.T) {
 	})
 }
 
+func TestMapWithIndex(t *testing.T) {
+	t.Run("empty seq", func(t *testing.T) {
+		require.Equal(t, ToSlice(Empty[int]()), ToSlice(MapWithIndex(Empty[int](), func(idx int, itm int) int { return idx + itm })))
+	})
+	t.Run("add index", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(1, 3, 5, 7)), ToSlice(MapWithIndex(FromValues(1, 2, 3, 4), func(idx int, itm int) int { return itm + idx })))
+	})
+	t.Run("to string with index", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues("0:1", "1:2", "2:3", "3:4")), ToSlice(MapWithIndex(FromValues(1, 2, 3, 4), func(idx int, itm int) string { return fmt.Sprint(idx, ":", itm) })))
+	})
+	t.Run("infinite seq", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(1, 2, 3, 4)), ToSlice(Take(MapWithIndex(Repeat(1), func(idx int, itm int) int { return idx + itm }), 4)))
+	})
+}
+
 func TestPartialSums(t *testing.T) {
 	testCases := map[string]struct {
 		seq  Seq[int]
@@ -651,6 +711,41 @@ func TestReject(t *testing.T) {
 		testCase := testCase
 		t.Run(name, func(t *testing.T) {
 			require.Equal(t, ToSlice(testCase.want), ToSlice(Reject(testCase.seq, testCase.pred)))
+		})
+	}
+}
+
+func TestRejectWithIndex(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		pred func(int, int) bool
+		want Seq[int]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			pred: func(idx int, itm int) bool { return true },
+			want: Empty[int](),
+		},
+		"every other": {
+			seq:  FromValues(1, 2, 3, 4),
+			pred: func(idx int, itm int) bool { return idx%2 == 0 },
+			want: FromValues(2, 4),
+		},
+		"take all": {
+			seq:  FromValues(1, 2, 3, 4),
+			pred: func(idx int, itm int) bool { return false },
+			want: FromValues(1, 2, 3, 4),
+		},
+		"take none": {
+			seq:  FromValues(1, 2, 3, 4),
+			pred: func(idx int, itm int) bool { return true },
+			want: Empty[int](),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(RejectWithIndex(testCase.seq, testCase.pred)))
 		})
 	}
 }
