@@ -61,6 +61,11 @@ func AppendTo[S Seq[E], E any, Es ~[]E](seq S, slice Es) Es {
 	return slice
 }
 
+// AsSeq type casts a concrete sequence as a generic sequence
+func AsSeq[S Seq[E], E any](seq S) Seq[E] {
+	return seq
+}
+
 // Concat returns a sequence that is the concatenation of the specified sequences
 func Concat[E any](seqs ...Seq[E]) Seq[E] {
 	switch len(seqs) {

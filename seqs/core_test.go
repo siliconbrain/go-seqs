@@ -117,6 +117,10 @@ func TestAppendTo(t *testing.T) {
 	}
 }
 
+func TestAsSeq(t *testing.T) {
+	var _ Seq[int] = AsSeq(seqFunc[int](nil))
+}
+
 func TestConcat(t *testing.T) {
 	testCases := map[string]struct {
 		seqs []Seq[int]
