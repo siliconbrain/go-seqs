@@ -225,6 +225,28 @@ func TestEmpty(t *testing.T) {
 	require.Zero(t, Empty[int]().(Lener).Len())
 }
 
+func TestEnumerate(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		want Seq[Pair[int, int]]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			want: Empty[Pair[int, int]](),
+		},
+		"some seq": {
+			seq:  FromValues(11, 22, 33, 44, 55),
+			want: FromValues(pairOf(0, 11), pairOf(1, 22), pairOf(2, 33), pairOf(3, 44), pairOf(4, 55)),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, ToSlice(testCase.want), ToSlice(Enumerate(testCase.seq)))
+		})
+	}
+}
+
 func TestFilter(t *testing.T) {
 	testCases := map[string]struct {
 		seq  Seq[int]

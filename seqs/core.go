@@ -130,6 +130,20 @@ func Empty[E any]() Seq[E] {
 	return emptySeq[E]{}
 }
 
+func Enumerate[S Seq[E], E any](seq S) Seq[Pair[int, E]] {
+	res := SeqFunc(func(yield func(Pair[int, E]) bool) {
+		idx := -1
+		seq.ForEachUntil(func(e E) bool {
+			idx++
+			return yield(pairOf(idx, e))
+		})
+	})
+	if lener, ok := asLener(seq); ok {
+		res = withLenFunc(res, lener.Len)
+	}
+	return res
+}
+
 // Filter returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `true`
 func Filter[S Seq[E], E any](seq S, pred func(E) bool) Seq[E] {
 	return FilterWithIndex(seq, func(_ int, e E) bool {
