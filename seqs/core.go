@@ -220,6 +220,11 @@ func ForEachWhileWithIndex[S Seq[E], E any](seq S, yield func(int, E) bool) {
 	ForEachWhile(Enumerate(seq), func(p Pair[int, E]) bool { return yield(p.Unwrap()) })
 }
 
+// FromValue returns a singleton sequence containing the specified value
+func FromValue[E any](value E) Seq[E] {
+	return singleton[E]{value: value}
+}
+
 // FromValues returns a sequence made up of the specified values
 func FromValues[E any](values ...E) Seq[E] {
 	return FromSlice(values)
@@ -760,6 +765,18 @@ type seqFunc[E any] func(yield func(E) bool)
 
 func (s seqFunc[E]) ForEachUntil(yield func(E) bool) {
 	s(yield)
+}
+
+type singleton[E any] struct {
+	value E
+}
+
+func (s singleton[E]) ForEachUntil(yield func(E) bool) {
+	yield(s.value)
+}
+
+func (s singleton[E]) Len() int {
+	return 1
 }
 
 type sliceSeq[E any] []E

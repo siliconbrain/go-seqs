@@ -429,6 +429,12 @@ func TestForEachWhileWithIndex(t *testing.T) {
 	require.Equal(t, []int{1, 2, 3}, vals)
 }
 
+func TestFromValue(t *testing.T) {
+	seq := FromValue(42)
+	require.Equal(t, []int{42}, ToSlice(seq))
+	require.Equal(t, 1, seq.(Lener).Len())
+}
+
 func TestFromSlicePtrs(t *testing.T) {
 	vals := []int{1, 2, 3, 4}
 	seq := FromSlicePtrs(vals)
