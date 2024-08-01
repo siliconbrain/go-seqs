@@ -156,6 +156,20 @@ func Filter[S Seq[E], E any](seq S, pred func(E) bool) Seq[E] {
 	})
 }
 
+// FilterMap returns a sequence comprised of only values returned by the specified function for which the function also returned `true`
+//
+// This function is useful when the transformation and the predicate function cannot be easily separated.
+func FilterMap[S Seq[Src], Src, Dst any](seq S, fn func(Src) (Dst, bool)) Seq[Dst] {
+	return SeqFunc(func(yield func(Dst) bool) {
+		seq.ForEachUntil(func(src Src) bool {
+			if dst, ok := fn(src); ok {
+				return yield(dst)
+			}
+			return false
+		})
+	})
+}
+
 // FilterWithIndex returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `true`
 func FilterWithIndex[S Seq[E], E any](seq S, pred func(int, E) bool) Seq[E] {
 	return Map(Filter(Enumerate(seq), func(p Pair[int, E]) bool { return pred(p.Unwrap()) }), second)

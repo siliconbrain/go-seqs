@@ -282,6 +282,41 @@ func TestFilter(t *testing.T) {
 	}
 }
 
+func TestFilterMap(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		fn   func(int) (int, bool)
+		want Seq[int]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			fn:   func(i int) (int, bool) { return i + 1, true },
+			want: Empty[int](),
+		},
+		"every other": {
+			seq:  FromValues(1, 2, 3, 4),
+			fn:   func(i int) (int, bool) { return i * 2, i%2 == 0 },
+			want: FromValues(4, 8),
+		},
+		"take all": {
+			seq:  FromValues(1, 2, 3, 4),
+			fn:   func(i int) (int, bool) { return i + 1, true },
+			want: FromValues(2, 3, 4, 5),
+		},
+		"take none": {
+			seq:  FromValues(1, 2, 3, 4),
+			fn:   func(i int) (int, bool) { return i * 0, false },
+			want: Empty[int](),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(FilterMap(testCase.seq, testCase.fn)))
+		})
+	}
+}
+
 func TestFilterWithIndex(t *testing.T) {
 	testCases := map[string]struct {
 		seq  Seq[int]
