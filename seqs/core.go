@@ -1,6 +1,7 @@
 package seqs
 
 import (
+	"iter"
 	"slices"
 )
 
@@ -229,6 +230,24 @@ func ForEachWhile[S Seq[E], E any](seq S, yield func(E) bool) {
 // ForEachWhileWithIndex calls the specified function for each element of the specified sequence along with its index while the function returns `true`
 func ForEachWhileWithIndex[S Seq[E], E any](seq S, yield func(int, E) bool) {
 	ForEachWhile(Enumerate(seq), func(p Pair[int, E]) bool { return yield(p.Unwrap()) })
+}
+
+// FromIter returns a sequence from the specified [iter.Seq] (or equivalent function)
+func FromIter[IterSeq ~func(yield func(E) bool), E any](iterSeq IterSeq) Seq[E] {
+	return SeqFunc(func(yield func(E) bool) {
+		iterSeq(func(value E) bool {
+			return !yield(value)
+		})
+	})
+}
+
+// FromIter2 returns a sequence from the specified [iter.Seq2] (or equivalent function)
+func FromIter2[IterSeq2 ~func(yield func(K, V) bool), K, V, E any](iterSeq2 IterSeq2, pack func(K, V) E) Seq[E] {
+	return SeqFunc(func(yield func(E) bool) {
+		iterSeq2(func(k K, v V) bool {
+			return !yield(pack(k, v))
+		})
+	})
 }
 
 // FromValue returns a singleton sequence containing the specified value
@@ -633,6 +652,22 @@ func TakeWhile[S Seq[E], E any](s S, pred func(E) bool) Seq[E] {
 			return true
 		})
 	})
+}
+
+// ToIter returns the sequence as an [iter.Seq]
+func ToIter[S Seq[E], E any](seq S) iter.Seq[E] {
+	return func(yield func(E) bool) {
+		ForEachWhile(seq, yield)
+	}
+}
+
+// ToIter2 returns the sequence as an [iter.Seq2] by unpacking sequence elements with the specified function
+func ToIter2[S Seq[E], E, K, V any](seq S, unpack func(E) (K, V)) iter.Seq2[K, V] {
+	return func(yield func(K, V) bool) {
+		ForEachWhile(seq, func(value E) bool {
+			return yield(unpack(value))
+		})
+	}
 }
 
 // ToSet returns a set (boolean valued map) created from the elements of the specified sequence
