@@ -53,7 +53,7 @@ func Any[S Seq[E], E any](seq S, pred func(E) bool) (res bool) {
 // AppendTo appends elements from the specified sequence to the slice(ish)
 func AppendTo[S Seq[E], E any, Es ~[]E](seq S, slice Es) Es {
 	if lener, ok := asLener(seq); ok {
-		slices.Grow(slice, lener.Len())
+		slice = slices.Grow(slice, lener.Len())
 	}
 	ForEach(seq, func(e E) {
 		slice = append(slice, e)
