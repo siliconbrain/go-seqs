@@ -148,10 +148,7 @@ func Enumerate[S Seq[E], E any](seq S) Seq[Pair[int, E]] {
 func Filter[S Seq[E], E any](seq S, pred func(E) bool) Seq[E] {
 	return SeqFunc(func(yield func(E) bool) {
 		seq.ForEachUntil(func(e E) bool {
-			if pred(e) {
-				return yield(e)
-			}
-			return false
+			return pred(e) && yield(e)
 		})
 	})
 }
