@@ -641,8 +641,6 @@ func Take[S Seq[E], E any](s S, n int) Seq[E] {
 }
 
 // TakeWhile returns a sequence of the first elements of the specified sequence while the specified predicate returns `true`
-//
-// TakeWhile(FromValues())
 func TakeWhile[S Seq[E], E any](s S, pred func(E) bool) Seq[E] {
 	return SeqFunc(func(yield func(E) bool) {
 		s.ForEachUntil(func(e E) bool {
