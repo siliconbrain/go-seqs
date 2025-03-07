@@ -1,0 +1,7 @@
+{
+    "gopls": {
+        "ui.diagnostic.analyses": {
+            "yield": false // we use yield differently :\
+        }
+    }
+}
