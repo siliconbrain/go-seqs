@@ -67,6 +67,15 @@ func AsSeq[S Seq[E], E any](seq S) Seq[E] {
 	return seq
 }
 
+// Cartesian returns a sequence of applying the combinator function to all ordered pairs of the specified sequences' elements.
+func Cartesian[SeqA Seq[A], SeqB Seq[B], A, B, Result any](seqA SeqA, seqB SeqB, combine func(A, B) Result) Seq[Result] {
+	return Flatten(Map(seqA, func(a A) Seq[Result] {
+		return Map(seqB, func(b B) Result {
+			return combine(a, b)
+		})
+	}))
+}
+
 // Concat returns a sequence that is the concatenation of the specified sequences
 func Concat[E any](seqs ...Seq[E]) Seq[E] {
 	switch len(seqs) {
