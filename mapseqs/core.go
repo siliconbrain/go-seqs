@@ -1,6 +1,8 @@
 package mapseqs
 
 import (
+	"iter"
+
 	"github.com/siliconbrain/go-seqs/seqs"
 )
 
@@ -112,4 +114,25 @@ func ToMapWith[Seq seqs.Seq[Entry], Entry any, Key comparable, Value any, Unpack
 // ZipToMap returns a map obtained by zipping the specified sequence of keys and sequence of values.
 func ZipToMap[KeySeq seqs.Seq[Key], ValueSeq seqs.Seq[Value], Key comparable, Value any](keys KeySeq, values ValueSeq) map[Key]Value {
 	return ToMap(seqs.ZipWith(keys, values, MapEntryFrom))
+}
+
+// Remap returns a map obtained by passing entries of the specified map to the specified transformation function and folding the resulting entries into a map.
+func Remap[
+	Map ~map[KeyIn]ValueIn,
+	EntryOut interface{ Unpack() (KeyOut, ValueOut) },
+	KeyIn, KeyOut comparable,
+	ValueIn, ValueOut any,
+](m Map, fn func(KeyIn, ValueIn) seqs.Seq[EntryOut]) map[KeyOut]ValueOut {
+	return ToMap(seqs.Flatten(EntriesOfWith(m, fn)))
+}
+
+// RemapIter is the same as [Remap] but the transformation function returns an [iter.Seq2] instead of a [seqs.Seq].
+func RemapIter[
+	Map ~map[KeyIn]ValueIn,
+	KeyIn, KeyOut comparable,
+	ValueIn, ValueOut any,
+](m Map, fn func(KeyIn, ValueIn) iter.Seq2[KeyOut, ValueOut]) map[KeyOut]ValueOut {
+	return Remap(m, func(key KeyIn, val ValueIn) seqs.Seq[MapEntry[KeyOut, ValueOut]] {
+		return seqs.FromIter2(fn(key, val), MapEntryFrom)
+	})
 }
