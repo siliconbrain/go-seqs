@@ -1,6 +1,8 @@
 package mapseqs
 
-import "github.com/siliconbrain/go-seqs/seqs"
+import (
+	"github.com/siliconbrain/go-seqs/seqs"
+)
 
 type Mapping[K comparable, V any] interface {
 	~map[K]V
@@ -105,4 +107,9 @@ func ToMapWith[Seq seqs.Seq[Entry], Entry any, Key comparable, Value any, Unpack
 		m[key] = value
 		return m
 	})
+}
+
+// ZipToMap returns a map obtained by zipping the specified sequence of keys and sequence of values.
+func ZipToMap[KeySeq seqs.Seq[Key], ValueSeq seqs.Seq[Value], Key comparable, Value any](keys KeySeq, values ValueSeq) map[Key]Value {
+	return ToMap(seqs.ZipWith(keys, values, MapEntryFrom))
 }
