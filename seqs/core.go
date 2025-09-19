@@ -108,11 +108,9 @@ func Concat[E any](seqs ...Seq[E]) Seq[E] {
 	}
 }
 
-// Count returns the number of elements in the specified sequence.
-//
-// Application to an infinite sequence will block indefinitely.
-func Count[S Seq[E], E any](seq S) int {
-	return Sum(Map(seq, func(E) int { return 1 }))
+// Count returns a sequence of repeatedly adding step to the previous value, starting with from.
+func Count[Num Summable](from Num, step Num) Seq[Num] {
+	return SeededReductions(Repeat(step), from, add)
 }
 
 // Cycle returns an (almost always) infinite sequence that cyclically repeats the elements of the specified sequence
@@ -333,6 +331,16 @@ func Last[S Seq[E], E any](seq S) (last E, hasLast bool) {
 		last, hasLast = e, true
 	})
 	return
+}
+
+// Len returns the number of elements in the specified sequence.
+//
+// Application to an infinite sequence will block indefinitely.
+func Len[S Seq[E], E any](seq S) int {
+	if seq, ok := Seq[E](seq).(Lener); ok {
+		return seq.Len()
+	}
+	return Sum(Map(seq, func(E) int { return 1 }))
 }
 
 // Map returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence

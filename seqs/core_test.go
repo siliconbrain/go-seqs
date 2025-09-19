@@ -168,25 +168,18 @@ func TestConcat(t *testing.T) {
 }
 
 func TestCount(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		want int
-	}{
-		"empty seq": {
-			seq:  Empty[int](),
-			want: 0,
-		},
-		"non-empty seq": {
-			seq:  FromValues(1, 2, 3),
-			want: 3,
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, testCase.want, Count(testCase.seq))
-		})
-	}
+	t.Run("from 0 by 1", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(0, 1, 2, 3, 4, 5)), ToSlice(Take(Count(0, 1), 6)))
+	})
+	t.Run("from 2 by 2", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(2, 4, 6, 8, 10, 12)), ToSlice(Take(Count(2, 2), 6)))
+	})
+	t.Run("from -1.5 by 0.5", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(-1.5, -1.0, -0.5, 0, 0.5, 1.0)), ToSlice(Take(Count(-1.5, 0.5), 6)))
+	})
+	t.Run("from 3 by -1", func(t *testing.T) {
+		require.Equal(t, ToSlice(FromValues(3, 2, 1, 0, -1, -2)), ToSlice(Take(Count(3, -1), 6)))
+	})
 }
 
 func TestCycle(t *testing.T) {
@@ -625,6 +618,32 @@ func TestLast(t *testing.T) {
 			last, hasLast := Last(testCase.seq)
 			assert.Equal(t, testCase.wantLast, last)
 			assert.Equal(t, testCase.wantHasLast, hasLast)
+		})
+	}
+}
+
+func TestLen(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		want int
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			want: 0,
+		},
+		"non-empty seq": {
+			seq:  FromValues(1, 2, 3),
+			want: 3,
+		},
+		"unknown length seq": {
+			seq:  Filter(FromValues(0, 1, 2, 3, 4, 5), func(v int) bool { return v%2 == 0 }),
+			want: 3,
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, testCase.want, Len(testCase.seq))
 		})
 	}
 }
