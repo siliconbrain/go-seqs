@@ -449,7 +449,7 @@ func RepeatN[E any](e E, n int) Seq[E] {
 	// NOTE: cannot implement as Take(Repeat(e), n) because Take is (currently) unable to detect that its sequence is infinite an thus provide a correct length
 	return withLenFunc(
 		SeqFunc(func(yield func(E) bool) {
-			for i := 0; i < n; i++ {
+			for range n {
 				if yield(e) {
 					return
 				}
