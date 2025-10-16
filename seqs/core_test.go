@@ -212,6 +212,214 @@ func TestCycle(t *testing.T) {
 	}
 }
 
+func TestDivvy(t *testing.T) {
+	t.Run("zero count", func(t *testing.T) {
+		require.Panics(t, func() {
+			Divvy(FromValues(1, 2, 3, 4), 0, 1)
+		})
+	})
+	t.Run("zero skip", func(t *testing.T) {
+		require.Panics(t, func() {
+			Divvy(FromValues(1, 2, 3, 4), 1, 0)
+		})
+	})
+	testCases := map[string]struct {
+		seq   Seq[int]
+		count int
+		skip  int
+		want  Seq[[]int]
+	}{
+		"empty seq": {
+			seq:   Empty[int](),
+			count: 1,
+			skip:  1,
+			want:  Empty[[]int](),
+		},
+		"each element by itself": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 1,
+			skip:  1,
+			want:  FromValues([]int{1}, []int{2}, []int{3}, []int{4}),
+		},
+		"overlapping pairs": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 2,
+			skip:  1,
+			want:  FromValues([]int{1, 2}, []int{2, 3}, []int{3, 4}),
+		},
+		"adjacent pairs": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 2,
+			skip:  2,
+			want:  FromValues([]int{1, 2}, []int{3, 4}),
+		},
+		"disjunct pairs": {
+			seq:   FromValues(1, 2, 3, 4, 5, 6, 7, 8),
+			count: 2,
+			skip:  4,
+			want:  FromValues([]int{1, 2}, []int{5, 6}),
+		},
+		"overlapping triplets": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 3,
+			skip:  1,
+			want:  FromValues([]int{1, 2, 3}, []int{2, 3, 4}),
+		},
+		"adjacent triplets": {
+			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
+			count: 3,
+			skip:  3,
+			want:  FromValues([]int{1, 2, 3}, []int{4, 5, 6}, []int{7}),
+		},
+		"disjunct triplets": {
+			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
+			count: 3,
+			skip:  4,
+			want:  FromValues([]int{1, 2, 3}, []int{5, 6, 7}),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(Divvy(testCase.seq, testCase.count, testCase.skip)))
+		})
+	}
+	t.Run("break early", func(t *testing.T) {
+		require.Equal(t, [][]int{{1, 2}, {2, 3}}, ToSlice(Take(Divvy(FromValues(1, 2, 3, 4, 5, 6), 2, 1), 2)))
+	})
+	t.Run("with infinite seq", func(t *testing.T) {
+		require.Equal(t, [][]int{{1, 1}, {1, 1}}, ToSlice(Take(Divvy(Repeat(1), 2, 1), 2)))
+	})
+}
+
+func TestDivvy_Len(t *testing.T) {
+	t.Run("unlenable seq", func(t *testing.T) {
+		_, ok := Divvy(hideLen(FromValues(1, 2, 3)), 1, 1).(Lener)
+		require.False(t, ok, "should not know length for unknown length sequence")
+	})
+
+	check := func(seq FiniteSeq[int], size int, skip int) func(t *testing.T) {
+		return func(t *testing.T) {
+			windows := Divvy(seq, size, skip)
+			expected := Len(hideLen(windows))
+			actual := windows.(Lener).Len()
+			t.Logf("Divvy(%v, %d, %d) => %v", ToSlice(seq), size, skip, ToSlice(windows))
+			require.Equal(t, expected, actual)
+		}
+	}
+	t.Run("empty seq", check(Empty[int]().(FiniteSeq[int]), 1, 1))
+	t.Run("each element by itself", check(FromValues(1, 2, 3, 4).(FiniteSeq[int]), 1, 1))
+	t.Run("adjacent pairs", check(FromValues(1, 2, 3, 4).(FiniteSeq[int]), 2, 2))
+	t.Run("adjacent pairs with remainder", check(FromValues(1, 2, 3, 4, 5).(FiniteSeq[int]), 2, 2))
+	t.Run("overlapping pairs", check(FromValues(1, 2, 3, 4, 5).(FiniteSeq[int]), 2, 1))
+	t.Run("overlapping triplets", check(FromValues(1, 2, 3, 4, 5).(FiniteSeq[int]), 3, 2))
+	t.Run("overlapping triplets with remainder", check(FromValues(1, 2, 3, 4, 5, 6).(FiniteSeq[int]), 3, 2))
+}
+
+func TestDivvyExact(t *testing.T) {
+	t.Run("zero count", func(t *testing.T) {
+		require.Panics(t, func() {
+			DivvyExact(FromValues(1, 2, 3, 4), 0, 1)
+		})
+	})
+	t.Run("zero skip", func(t *testing.T) {
+		require.Panics(t, func() {
+			DivvyExact(FromValues(1, 2, 3, 4), 1, 0)
+		})
+	})
+	testCases := map[string]struct {
+		seq   Seq[int]
+		count int
+		skip  int
+		want  Seq[[]int]
+	}{
+		"empty seq": {
+			seq:   Empty[int](),
+			count: 1,
+			skip:  1,
+			want:  Empty[[]int](),
+		},
+		"each element by itself": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 1,
+			skip:  1,
+			want:  FromValues([]int{1}, []int{2}, []int{3}, []int{4}),
+		},
+		"overlapping pairs": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 2,
+			skip:  1,
+			want:  FromValues([]int{1, 2}, []int{2, 3}, []int{3, 4}),
+		},
+		"adjacent pairs": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 2,
+			skip:  2,
+			want:  FromValues([]int{1, 2}, []int{3, 4}),
+		},
+		"disjunct pairs": {
+			seq:   FromValues(1, 2, 3, 4, 5, 6, 7, 8),
+			count: 2,
+			skip:  4,
+			want:  FromValues([]int{1, 2}, []int{5, 6}),
+		},
+		"overlapping triplets": {
+			seq:   FromValues(1, 2, 3, 4),
+			count: 3,
+			skip:  1,
+			want:  FromValues([]int{1, 2, 3}, []int{2, 3, 4}),
+		},
+		"adjacent triplets": {
+			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
+			count: 3,
+			skip:  3,
+			want:  FromValues([]int{1, 2, 3}, []int{4, 5, 6}),
+		},
+		"disjunct triplets": {
+			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
+			count: 3,
+			skip:  4,
+			want:  FromValues([]int{1, 2, 3}, []int{5, 6, 7}),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, ToSlice(testCase.want), ToSlice(DivvyExact(testCase.seq, testCase.count, testCase.skip)))
+		})
+	}
+	t.Run("break early", func(t *testing.T) {
+		require.Equal(t, [][]int{{1, 2}, {2, 3}}, ToSlice(Take(DivvyExact(FromValues(1, 2, 3, 4, 5, 6), 2, 1), 2)))
+	})
+	t.Run("with infinite seq", func(t *testing.T) {
+		require.Equal(t, [][]int{{1, 1}, {1, 1}}, ToSlice(Take(DivvyExact(Repeat(1), 2, 1), 2)))
+	})
+}
+
+func TestDivvyExact_Len(t *testing.T) {
+	t.Run("unlenable seq", func(t *testing.T) {
+		_, ok := DivvyExact(hideLen(FromValues(1, 2, 3)), 1, 1).(Lener)
+		require.False(t, ok, "should not know length for unknown length sequence")
+	})
+
+	check := func(seq FiniteSeq[int], size int, skip int) func(t *testing.T) {
+		return func(t *testing.T) {
+			windows := DivvyExact(seq, size, skip)
+			expected := Len(hideLen(windows))
+			actual := windows.(Lener).Len()
+			t.Logf("DivvyExact(%v, %d, %d) => %v", ToSlice(seq), size, skip, ToSlice(windows))
+			require.Equal(t, expected, actual)
+		}
+	}
+	t.Run("empty seq", check(Empty[int]().(FiniteSeq[int]), 1, 1))
+	t.Run("each element by itself", check(FromValues(1, 2, 3, 4).(FiniteSeq[int]), 1, 1))
+	t.Run("adjacent pairs", check(FromValues(1, 2, 3, 4).(FiniteSeq[int]), 2, 2))
+	t.Run("adjacent pairs with remainder", check(FromValues(1, 2, 3, 4, 5).(FiniteSeq[int]), 2, 2))
+	t.Run("overlapping pairs", check(FromValues(1, 2, 3, 4, 5).(FiniteSeq[int]), 2, 1))
+	t.Run("overlapping triplets", check(FromValues(1, 2, 3, 4, 5).(FiniteSeq[int]), 3, 2))
+	t.Run("overlapping triplets with remainder", check(FromValues(1, 2, 3, 4, 5, 6).(FiniteSeq[int]), 3, 2))
+}
+
 func TestEmpty(t *testing.T) {
 	require.Empty(t, ToSlice(Empty[int]()))
 	require.Implements(t, (*Lener)(nil), Empty[int]())
@@ -990,86 +1198,6 @@ func TestSkipWhile(t *testing.T) {
 	}
 }
 
-func TestSlidingWindow(t *testing.T) {
-	t.Run("zero count", func(t *testing.T) {
-		require.Panics(t, func() {
-			SlidingWindow(FromValues(1, 2, 3, 4), 0, 1)
-		})
-	})
-	t.Run("zero skip", func(t *testing.T) {
-		require.Panics(t, func() {
-			SlidingWindow(FromValues(1, 2, 3, 4), 1, 0)
-		})
-	})
-	testCases := map[string]struct {
-		seq   Seq[int]
-		count int
-		skip  int
-		want  Seq[[]int]
-	}{
-		"empty seq": {
-			seq:   Empty[int](),
-			count: 1,
-			skip:  1,
-			want:  Empty[[]int](),
-		},
-		"each element by itself": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 1,
-			skip:  1,
-			want:  FromValues([]int{1}, []int{2}, []int{3}, []int{4}),
-		},
-		"overlapping pairs": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 2,
-			skip:  1,
-			want:  FromValues([]int{1, 2}, []int{2, 3}, []int{3, 4}),
-		},
-		"adjecent pairs": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 2,
-			skip:  2,
-			want:  FromValues([]int{1, 2}, []int{3, 4}),
-		},
-		"disjunct pairs": {
-			seq:   FromValues(1, 2, 3, 4, 5, 6, 7, 8),
-			count: 2,
-			skip:  4,
-			want:  FromValues([]int{1, 2}, []int{5, 6}),
-		},
-		"overlapping triplets": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 3,
-			skip:  1,
-			want:  FromValues([]int{1, 2, 3}, []int{2, 3, 4}),
-		},
-		"adjecent triplets": {
-			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
-			count: 3,
-			skip:  3,
-			want:  FromValues([]int{1, 2, 3}, []int{4, 5, 6}),
-		},
-		"disjunct triplets": {
-			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
-			count: 3,
-			skip:  4,
-			want:  FromValues([]int{1, 2, 3}, []int{5, 6, 7}),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(SlidingWindow(testCase.seq, testCase.count, testCase.skip)))
-		})
-	}
-	t.Run("break early", func(t *testing.T) {
-		require.Equal(t, [][]int{{1, 2}, {2, 3}}, ToSlice(Take(SlidingWindow(FromValues(1, 2, 3, 4, 5, 6), 2, 1), 2)))
-	})
-	t.Run("with infinite seq", func(t *testing.T) {
-		require.Equal(t, [][]int{{1, 1}, {1, 1}}, ToSlice(Take(SlidingWindow(Repeat(1), 2, 1), 2)))
-	})
-}
-
 func TestSum(t *testing.T) {
 	testCases := map[string]struct {
 		seq  Seq[int]
@@ -1306,4 +1434,8 @@ func TestZipWith(t *testing.T) {
 			assert.Equal(t, ToSlice(testCase.want), ToSlice(ZipWith(testCase.seq1, testCase.seq2, add)))
 		})
 	}
+}
+
+func hideLen[Item any](seq Seq[Item]) Seq[Item] {
+	return SeqFunc(seq.ForEachUntil)
 }

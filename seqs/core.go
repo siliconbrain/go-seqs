@@ -133,6 +133,95 @@ func Cycle[S Seq[E], E any](seq S) Seq[E] {
 	})
 }
 
+// Divvy returns a sequence of slices with at most size length containing a continuous range of elements from the specified sequence.
+// The start of each slice will be offset by skip number of elements from the previous one.
+// Slices will overlap when size > skip, and some elements will be dropped when size < skip.
+func Divvy[S Seq[E], E any](seq S, size int, skip int) Seq[[]E] {
+	if size < 1 {
+		panic("size must be positive")
+	}
+	if skip < 1 {
+		panic("skip must be positive")
+	}
+	shift := min(skip, size)
+	ignore := skip - shift
+
+	res := SeqFunc(func(yield func([]E) bool) {
+		buf := make([]E, 0, size)
+		ignoreCnt := 0
+		shouldFlush := false
+		brk := false
+		seq.ForEachUntil(func(e E) bool {
+			if ignoreCnt > 0 {
+				ignoreCnt--
+				return false
+			}
+			buf = append(buf, e)
+			shouldFlush = true
+			if len(buf) == size {
+				if yield(slices.Clone(buf)) {
+					brk = true
+					return true
+				}
+				buf = append(buf[0:0], buf[shift:]...)
+				ignoreCnt = ignore
+				shouldFlush = false
+			}
+			return false
+		})
+		if shouldFlush && !brk {
+			_ = yield(buf)
+		}
+	})
+	if lener, ok := asLener(seq); ok {
+		res = withLenFunc(res, func() int {
+			l := lener.Len()
+			return roundUpDiv(min(l, size), size) + roundUpDiv(max(l-size, 0), skip)
+		})
+	}
+	return res
+}
+
+// DivvyExact is like Divvy but all slices are exactly size length.
+// Any trailing elements are dropped.
+func DivvyExact[E any](seq Seq[E], size int, skip int) Seq[[]E] {
+	if size < 1 {
+		panic("size must be positive")
+	}
+	if skip < 1 {
+		panic("skip must be positive")
+	}
+	shift := min(skip, size)
+	ignore := skip - shift
+
+	res := SeqFunc(func(yield func([]E) bool) {
+		buf := make([]E, 0, size)
+		ignoreCnt := 0
+		seq.ForEachUntil(func(e E) bool {
+			if ignoreCnt > 0 {
+				ignoreCnt--
+				return false
+			}
+			buf = append(buf, e)
+			if len(buf) == size {
+				if yield(slices.Clone(buf)) {
+					return true
+				}
+				buf = append(buf[0:0], buf[shift:]...)
+				ignoreCnt = ignore
+			}
+			return false
+		})
+	})
+	if lener, ok := asLener(seq); ok {
+		res = withLenFunc(res, func() int {
+			l := lener.Len()
+			return roundDownDiv(min(l, size), size) + roundDownDiv(max(l-size, 0), skip)
+		})
+	}
+	return res
+}
+
 // Empty returns an empty sequence
 func Empty[E any]() Seq[E] {
 	return emptySeq[E]{}
@@ -589,39 +678,10 @@ func SkipWhile[S Seq[E], E any](s S, pred func(E) bool) Seq[E] {
 
 // SlidingWindow returns a sequence of windows (slices of count length) containing the elements of the specified sequence.
 // Windows start after each other with a distance of skip.
+//
+// Deprecated: Use DivvyExact instead.
 func SlidingWindow[S Seq[E], E any](seq S, count int, skip int) Seq[[]E] {
-	if count < 1 {
-		panic("count must be positive")
-	}
-	if skip < 1 {
-		panic("skip must be positive")
-	}
-	res := SeqFunc(func(yield func([]E) bool) {
-		shift := min(skip, count)
-		ignore := skip - shift
-
-		buf := make([]E, 0, count)
-		ignoreCnt := 0
-		seq.ForEachUntil(func(e E) bool {
-			if ignoreCnt > 0 {
-				ignoreCnt--
-				return false
-			}
-			buf = append(buf, e)
-			if len(buf) == count {
-				if yield(slices.Clone(buf)) {
-					return true
-				}
-				buf = append(buf[0:0], buf[shift:]...)
-				ignoreCnt = ignore // reset ignore counter
-			}
-			return false
-		})
-	})
-	if lener, ok := asLener(seq); ok {
-		res = withLenFunc(res, func() int { return (lener.Len() - count + 1) / skip })
-	}
-	return res
+	return DivvyExact(seq, count, skip)
 }
 
 // Sum returns the sum of the specified sequence's elements.
@@ -900,4 +960,12 @@ type lenFunc func() int
 
 func (fn lenFunc) Len() int {
 	return fn()
+}
+
+func roundDownDiv(nom int, denom int) int {
+	return nom / denom
+}
+
+func roundUpDiv(nom int, denom int) int {
+	return (nom + denom - 1) / denom
 }
