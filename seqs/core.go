@@ -672,14 +672,11 @@ func SkipWhile[S Seq[E], E any](s S, pred func(E) bool) Seq[E] {
 	return SeqFunc(func(yield func(E) bool) {
 		skipping := true
 		s.ForEachUntil(func(e E) bool {
-			if !skipping {
-				return yield(e)
+			skipping = skipping && pred(e)
+			if skipping {
+				return false
 			}
-			skipping = pred(e)
-			if !skipping {
-				return yield(e)
-			}
-			return false
+			return yield(e)
 		})
 	})
 }
