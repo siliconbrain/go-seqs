@@ -117,7 +117,7 @@ func Concat[E any](seqs ...Seq[E]) Seq[E] {
 }
 
 // Count returns a sequence of repeatedly adding step to the previous value, starting with from.
-func Count[Num Summable](from Num, step Num) Seq[Num] {
+func Count[Item Summable](from Item, step Item) Seq[Item] {
 	return SeededReductions(Repeat(step), from, add)
 }
 
@@ -190,7 +190,7 @@ func Divvy[S Seq[E], E any](seq S, size int, skip int) Seq[[]E] {
 	return res
 }
 
-// DivvyExact is like Divvy but all slices are exactly size length.
+// DivvyExact is like [Divvy] but all slices are exactly size length.
 // Any trailing elements are dropped.
 func DivvyExact[E any](seq Seq[E], size int, skip int) Seq[[]E] {
 	if size < 1 {
