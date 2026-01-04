@@ -42,16 +42,17 @@ The library exploits this to support
 
 To be compatible with `seqs.Seq`, types should implement `ForEachWhile` instead of `ForEachUntil` with the same signature but different semantics such that iteration should be aborted when `yield` returns `false`.
 
-`AppendTo` has been renamed to `AppendToSlice`.
-`ForEach`, `ForEachUntilWithIndex`, `ForEachWithIndex`, and `ForEachWhileWithIndex` have been removed in favor of using a `range-for` loop, with `iter.Enumerate(seqs.ToIter(seq))` if needed.
-`FromValue` has been renamed to `Singleton`.
-`GenerateWithIndex` has been removed, but can be easily replaced using `Unfold` or a combination of `Count` and `Map`.
-`PartialSums` has been renamed to `Sums`.
-`Reject` and `RejectWithIndex` have been removed to keep the number of functions under control; use `Filter` and `FilterWithIndex` instead respectively with an inverted predicate.
-The rarely used `RoundRobin` has been removed.
-`SeededReduce` and `SeededReductions` have been renamed to `Fold` and `Folds`, respectively.
-`SeqFunc` has been removed, use `FromIter` instead.
-`Skip` and `SkipWhile` have been renamed to `Drop` and `DropWhile`, respectively.
-The deprecated `SlidingWindow` has been removed.
-`ToIter2` has been removed, use `iter.UnpackMap(seqs.ToIter(seq), unpack)` instead.
-`ToSet` has been removed, use `maps.Collect(iter.Zip(seqs.ToIter(seq), iter.Repeat(true)))` instead.
+The following functions have been removed or renamed:
+* `AppendTo` has been renamed to `AppendToSlice`.
+* `ForEach`, `ForEachUntilWithIndex`, `ForEachWithIndex`, and `ForEachWhileWithIndex` have been removed in favor of using a `range-for` loop, with `iter.Enumerate(seqs.ToIter(seq))` if needed.
+* `FromValue` has been renamed to `Singleton`.
+* `GenerateWithIndex` has been removed, but can be easily replaced using `seqs.Map(seqs.Count(0, 1), gen)`.
+* `PartialSums` has been renamed to `Sums`.
+* `Reject` and `RejectWithIndex` have been removed to keep the number of functions under control; use `Filter` and `FilterWithIndex` instead respectively with an inverted predicate.
+* The rarely used `RoundRobin` has been removed.
+* `SeededReduce` and `SeededReductions` have been renamed to `Fold` and `Folds`, respectively.
+* `SeqFunc` has been removed, use `FromIter` instead.
+* `Skip` and `SkipWhile` have been renamed to `Drop` and `DropWhile`, respectively.
+* The deprecated `SlidingWindow` has been removed.
+* `ToIter2` has been removed, use `iter.UnpackMap(seqs.ToIter(seq), unpack)` instead.
+* `ToSet` has been removed, use `maps.Collect(iter.Zip(seqs.ToIter(seq), iter.Repeat(true)))` instead.
