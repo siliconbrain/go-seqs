@@ -8,301 +8,145 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestAll(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		pred func(int) bool
-		want bool
-	}{
-		"empty seq": {
-			seq: Empty[int](),
-			pred: func(i int) bool {
-				return i < 42
-			},
-			want: true,
-		},
-		"seq without matching element": {
-			seq: FromValues(21, 42, 84),
-			pred: func(i int) bool {
-				return i%5 == 0
-			},
-			want: false,
-		},
-		"seq with matching elements": {
-			seq: FromValues(21, 42, 84),
-			pred: func(i int) bool {
-				return i > 30
-			},
-			want: false,
-		},
-		"seq of matching element": {
-			seq: FromValues(21, 42, 84),
-			pred: func(i int) bool {
-				return i%3 == 0
-			},
-			want: true,
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, testCase.want, All(testCase.seq, testCase.pred))
-		})
-	}
-}
-
-func TestAny(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		pred func(int) bool
-		want bool
-	}{
-		"empty seq": {
-			seq: Empty[int](),
-			pred: func(i int) bool {
-				return i < 42
-			},
-			want: false,
-		},
-		"seq without matching element": {
-			seq: FromValues(21, 42, 84),
-			pred: func(i int) bool {
-				return i%5 == 0
-			},
-			want: false,
-		},
-		"seq with matching element": {
-			seq: FromValues(21, 42, 84),
-			pred: func(i int) bool {
-				return 30 < i && i < 50
-			},
-			want: true,
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, testCase.want, Any(testCase.seq, testCase.pred))
-		})
-	}
-}
-
 func TestAppendTo(t *testing.T) {
+	t.Run("empty seq should not change the slice", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3}, AppendToSlice(Empty[int](), []int{1, 2, 3}))
+	})
+	t.Run("seq items should be appended to the slice in yield order", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3, 4, 5}, AppendToSlice(FromValues(3, 4, 5), []int{1, 2}))
+	})
+	t.Run("seq can be appended to nil slice", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3}, AppendToSlice(FromValues(1, 2, 3), []int(nil)))
+	})
+	t.Run("should panic when seq is known to be infinite", func(t *testing.T) {
+		assert.Panics(t, func() { _ = AppendToSlice(Repeat(1), []int{1}) })
+	})
+}
+
+func TestCartesian(t *testing.T) {
+	finite1 := FromValues(1, 2, 3)
+	unknown1 := hideCard(finite1)
+	infinite1 := Repeat(1)
+	finite2 := FromValues("a", "b", "c")
+	unknown2 := hideCard(finite2)
+	infinite2 := Repeat("a")
+
 	testCases := map[string]struct {
-		seq   Seq[int]
-		slice []int
-		want  []int
+		seq1           Seq[int]
+		seq2           Seq[string]
+		wantIsFinite   bool
+		wantIsInfinite bool
 	}{
-		"empty sequence does not change the slice": {
-			seq:   Empty[int](),
-			slice: []int{1, 2, 3},
-			want:  []int{1, 2, 3},
+		"finite x finite": {
+			seq1:           finite1,
+			seq2:           finite2,
+			wantIsFinite:   true,
+			wantIsInfinite: false,
 		},
-		"all sequence elements are appended to the slice in order": {
-			seq:   FromValues(4, 5, 6),
-			slice: []int{1, 2, 3},
-			want:  []int{1, 2, 3, 4, 5, 6},
+		"finite x unknown": {
+			seq1:           finite1,
+			seq2:           unknown2,
+			wantIsFinite:   false,
+			wantIsInfinite: false,
 		},
-		"sequence can be appended to nil slice": {
-			seq:   FromValues(1, 2, 3),
-			slice: nil,
-			want:  []int{1, 2, 3},
+		"finite x infinite": {
+			seq1:           finite1,
+			seq2:           infinite2,
+			wantIsFinite:   false,
+			wantIsInfinite: true,
+		},
+		"unknown x finite": {
+			seq1:           unknown1,
+			seq2:           finite2,
+			wantIsFinite:   false,
+			wantIsInfinite: false,
+		},
+		"unknown x unknown": {
+			seq1:           unknown1,
+			seq2:           unknown2,
+			wantIsFinite:   false,
+			wantIsInfinite: false,
+		},
+		"unknown x infinite": {
+			seq1:           unknown1,
+			seq2:           infinite2,
+			wantIsFinite:   false,
+			wantIsInfinite: true,
+		},
+		"infinite x finite": {
+			seq1:           infinite1,
+			seq2:           finite2,
+			wantIsFinite:   false,
+			wantIsInfinite: true,
+		},
+		"infinite x unknown": {
+			seq1:           infinite1,
+			seq2:           unknown2,
+			wantIsFinite:   false,
+			wantIsInfinite: true,
+		},
+		"infinite x infinite": {
+			seq1:           infinite1,
+			seq2:           infinite2,
+			wantIsFinite:   false,
+			wantIsInfinite: true,
 		},
 	}
 	for name, testCase := range testCases {
-		testCase := testCase
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, testCase.want, AppendTo(testCase.seq, testCase.slice))
+			seq := Cartesian(testCase.seq1, testCase.seq2, pairFrom)
+			assert.Equal(t, testCase.wantIsFinite, IsFinite(seq))
+			assert.Equal(t, testCase.wantIsInfinite, IsInfinite(seq))
 		})
 	}
-}
-
-func TestAsSeq(t *testing.T) {
-	var _ Seq[int] = AsSeq(seqFunc[int](nil))
 }
 
 func TestConcat(t *testing.T) {
-	testCases := map[string]struct {
-		seqs []Seq[int]
-		want Seq[int]
-	}{
-		"no seqs": {
-			seqs: []Seq[int]{},
-			want: Empty[int](),
-		},
-		"one seq": {
-			seqs: []Seq[int]{
-				FromValues(1, 2, 3, 4),
-			},
-			want: FromValues(1, 2, 3, 4),
-		},
-		"two seqs": {
-			seqs: []Seq[int]{
-				FromValues(1, 2),
-				FromValues(3, 4),
-			},
-			want: FromValues(1, 2, 3, 4),
-		},
-		"more seqs": {
-			seqs: []Seq[int]{
-				FromValues(1),
-				FromValues(2),
-				FromValues(3),
-				FromValues(4),
-			},
-			want: FromValues(1, 2, 3, 4),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(Concat(testCase.seqs...)))
-		})
-	}
-	t.Run("break early", func(t *testing.T) {
-		require.Equal(t, ToSlice(FromValues(1, 2, 2, 3, 3, 3)), ToSlice(Take(Concat(RepeatN(1, 1), RepeatN(2, 2), RepeatN(3, 3), RepeatN(4, 4)), 6)))
+	t.Run("should return empty seq when called without params", func(t *testing.T) {
+		assert.True(t, IsEmpty(Concat[int]()))
 	})
-	t.Run("with infinite seq", func(t *testing.T) {
-		require.Equal(t, ToSlice(FromValues(1, 2, 3, 4, 4, 4)), ToSlice(Take(Concat(FromValues(1, 2, 3), Repeat(4)), 6)))
+	t.Run("should return single parameter as-is", func(t *testing.T) {
+		seq := FromValues(1, 2, 3)
+		assert.Equal(t, seq, Concat(seq))
+	})
+	t.Run("should return finite seq when all params are finite", func(t *testing.T) {
+		assert.True(t, IsFinite(Concat(FromValues(1, 2), FromValues(3, 4), FromValues(5, 6))))
+	})
+	t.Run("should not return finite seq when any param's cardinality is unknown", func(t *testing.T) {
+		assert.False(t, IsFinite(Concat(FromValues(1, 2), hideCard(FromValues(3, 4)), FromValues(5, 6))))
+	})
+	t.Run("should return infinite seq when any param is infinite", func(t *testing.T) {
+		assert.True(t, IsInfinite(Concat(FromValues(1, 2), hideCard(FromValues(3, 4)), Repeat(5))))
 	})
 }
 
 func TestCount(t *testing.T) {
-	t.Run("from 0 by 1", func(t *testing.T) {
-		require.Equal(t, ToSlice(FromValues(0, 1, 2, 3, 4, 5)), ToSlice(Take(Count(0, 1), 6)))
-	})
-	t.Run("from 2 by 2", func(t *testing.T) {
-		require.Equal(t, ToSlice(FromValues(2, 4, 6, 8, 10, 12)), ToSlice(Take(Count(2, 2), 6)))
-	})
-	t.Run("from -1.5 by 0.5", func(t *testing.T) {
-		require.Equal(t, ToSlice(FromValues(-1.5, -1.0, -0.5, 0, 0.5, 1.0)), ToSlice(Take(Count(-1.5, 0.5), 6)))
-	})
-	t.Run("from 3 by -1", func(t *testing.T) {
-		require.Equal(t, ToSlice(FromValues(3, 2, 1, 0, -1, -2)), ToSlice(Take(Count(3, -1), 6)))
+	t.Run("should return infinite seq", func(t *testing.T) {
+		assert.True(t, IsInfinite(Count(1, 1)))
 	})
 }
 
 func TestCycle(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		take int
-		want Seq[int]
-	}{
-		"empty seq": {
-			seq:  Empty[int](),
-			take: 10,
-			want: Empty[int](),
-		},
-		"one element": {
-			seq:  FromValues(1),
-			take: 4,
-			want: RepeatN(1, 4),
-		},
-		"more elements": {
-			seq:  FromValues(1, 2, 3, 4),
-			take: 10,
-			want: FromValues(1, 2, 3, 4, 1, 2, 3, 4, 1, 2),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(Take(Cycle(testCase.seq), testCase.take)))
-		})
-	}
+	t.Run("should return an infinite sequence unchanged", func(t *testing.T) {
+		seq := comparableInfiniteSeq[int]{item: 42}
+		assert.Equal(t, seq, Cycle(seq))
+	})
+	t.Run("should return empty sequence for empty sequence", func(t *testing.T) {
+		assert.True(t, IsEmpty(Cycle(Empty[int]())))
+	})
 }
 
 func TestDivvy(t *testing.T) {
-	t.Run("zero count", func(t *testing.T) {
-		require.Panics(t, func() {
-			Divvy(FromValues(1, 2, 3, 4), 0, 1)
-		})
-	})
-	t.Run("zero skip", func(t *testing.T) {
-		require.Panics(t, func() {
-			Divvy(FromValues(1, 2, 3, 4), 1, 0)
-		})
-	})
-	testCases := map[string]struct {
-		seq   Seq[int]
-		count int
-		skip  int
-		want  Seq[[]int]
-	}{
-		"empty seq": {
-			seq:   Empty[int](),
-			count: 1,
-			skip:  1,
-			want:  Empty[[]int](),
-		},
-		"each element by itself": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 1,
-			skip:  1,
-			want:  FromValues([]int{1}, []int{2}, []int{3}, []int{4}),
-		},
-		"overlapping pairs": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 2,
-			skip:  1,
-			want:  FromValues([]int{1, 2}, []int{2, 3}, []int{3, 4}),
-		},
-		"adjacent pairs": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 2,
-			skip:  2,
-			want:  FromValues([]int{1, 2}, []int{3, 4}),
-		},
-		"disjunct pairs": {
-			seq:   FromValues(1, 2, 3, 4, 5, 6, 7, 8),
-			count: 2,
-			skip:  4,
-			want:  FromValues([]int{1, 2}, []int{5, 6}),
-		},
-		"overlapping triplets": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 3,
-			skip:  1,
-			want:  FromValues([]int{1, 2, 3}, []int{2, 3, 4}),
-		},
-		"adjacent triplets": {
-			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
-			count: 3,
-			skip:  3,
-			want:  FromValues([]int{1, 2, 3}, []int{4, 5, 6}, []int{7}),
-		},
-		"disjunct triplets": {
-			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
-			count: 3,
-			skip:  4,
-			want:  FromValues([]int{1, 2, 3}, []int{5, 6, 7}),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(Divvy(testCase.seq, testCase.count, testCase.skip)))
-		})
-	}
-	t.Run("break early", func(t *testing.T) {
-		require.Equal(t, [][]int{{1, 2}, {2, 3}}, ToSlice(Take(Divvy(FromValues(1, 2, 3, 4, 5, 6), 2, 1), 2)))
-	})
-	t.Run("with infinite seq", func(t *testing.T) {
-		require.Equal(t, [][]int{{1, 1}, {1, 1}}, ToSlice(Take(Divvy(Repeat(1), 2, 1), 2)))
-	})
-}
-
-func TestDivvy_Len(t *testing.T) {
 	t.Run("unlenable seq", func(t *testing.T) {
-		_, ok := Divvy(hideLen(FromValues(1, 2, 3)), 1, 1).(Lener)
-		require.False(t, ok, "should not know length for unknown length sequence")
+		_, hasLen := getLength(Divvy(hideCard(FromValues(1, 2, 3)), 1, 1))
+		require.False(t, hasLen, "should not know length for unknown length sequence")
 	})
 
 	check := func(seq FiniteSeq[int], size int, skip int) func(t *testing.T) {
 		return func(t *testing.T) {
 			windows := Divvy(seq, size, skip)
-			expected := Len(hideLen(windows))
-			actual := windows.(Lener).Len()
+			expected := Len(hideCard(windows))
+			actual, _ := getLength(windows)
 			t.Logf("Divvy(%v, %d, %d) => %v", ToSlice(seq), size, skip, ToSlice(windows))
 			require.Equal(t, expected, actual)
 		}
@@ -314,99 +158,23 @@ func TestDivvy_Len(t *testing.T) {
 	t.Run("overlapping pairs", check(FromValues(1, 2, 3, 4, 5).(FiniteSeq[int]), 2, 1))
 	t.Run("overlapping triplets", check(FromValues(1, 2, 3, 4, 5).(FiniteSeq[int]), 3, 2))
 	t.Run("overlapping triplets with remainder", check(FromValues(1, 2, 3, 4, 5, 6).(FiniteSeq[int]), 3, 2))
+
+	t.Run("should return infinite sequence for infinite sequence", func(t *testing.T) {
+		assert.True(t, IsInfinite(Divvy(Repeat(1), 1, 1)))
+	})
 }
 
 func TestDivvyExact(t *testing.T) {
-	t.Run("zero count", func(t *testing.T) {
-		require.Panics(t, func() {
-			DivvyExact(FromValues(1, 2, 3, 4), 0, 1)
-		})
-	})
-	t.Run("zero skip", func(t *testing.T) {
-		require.Panics(t, func() {
-			DivvyExact(FromValues(1, 2, 3, 4), 1, 0)
-		})
-	})
-	testCases := map[string]struct {
-		seq   Seq[int]
-		count int
-		skip  int
-		want  Seq[[]int]
-	}{
-		"empty seq": {
-			seq:   Empty[int](),
-			count: 1,
-			skip:  1,
-			want:  Empty[[]int](),
-		},
-		"each element by itself": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 1,
-			skip:  1,
-			want:  FromValues([]int{1}, []int{2}, []int{3}, []int{4}),
-		},
-		"overlapping pairs": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 2,
-			skip:  1,
-			want:  FromValues([]int{1, 2}, []int{2, 3}, []int{3, 4}),
-		},
-		"adjacent pairs": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 2,
-			skip:  2,
-			want:  FromValues([]int{1, 2}, []int{3, 4}),
-		},
-		"disjunct pairs": {
-			seq:   FromValues(1, 2, 3, 4, 5, 6, 7, 8),
-			count: 2,
-			skip:  4,
-			want:  FromValues([]int{1, 2}, []int{5, 6}),
-		},
-		"overlapping triplets": {
-			seq:   FromValues(1, 2, 3, 4),
-			count: 3,
-			skip:  1,
-			want:  FromValues([]int{1, 2, 3}, []int{2, 3, 4}),
-		},
-		"adjacent triplets": {
-			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
-			count: 3,
-			skip:  3,
-			want:  FromValues([]int{1, 2, 3}, []int{4, 5, 6}),
-		},
-		"disjunct triplets": {
-			seq:   FromValues(1, 2, 3, 4, 5, 6, 7),
-			count: 3,
-			skip:  4,
-			want:  FromValues([]int{1, 2, 3}, []int{5, 6, 7}),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(DivvyExact(testCase.seq, testCase.count, testCase.skip)))
-		})
-	}
-	t.Run("break early", func(t *testing.T) {
-		require.Equal(t, [][]int{{1, 2}, {2, 3}}, ToSlice(Take(DivvyExact(FromValues(1, 2, 3, 4, 5, 6), 2, 1), 2)))
-	})
-	t.Run("with infinite seq", func(t *testing.T) {
-		require.Equal(t, [][]int{{1, 1}, {1, 1}}, ToSlice(Take(DivvyExact(Repeat(1), 2, 1), 2)))
-	})
-}
-
-func TestDivvyExact_Len(t *testing.T) {
 	t.Run("unlenable seq", func(t *testing.T) {
-		_, ok := DivvyExact(hideLen(FromValues(1, 2, 3)), 1, 1).(Lener)
-		require.False(t, ok, "should not know length for unknown length sequence")
+		_, hasLen := getLength(DivvyExact(hideCard(FromValues(1, 2, 3)), 1, 1))
+		require.False(t, hasLen, "should not know length for unknown length sequence")
 	})
 
 	check := func(seq FiniteSeq[int], size int, skip int) func(t *testing.T) {
 		return func(t *testing.T) {
 			windows := DivvyExact(seq, size, skip)
-			expected := Len(hideLen(windows))
-			actual := windows.(Lener).Len()
+			expected := Len(hideCard(windows))
+			actual, _ := getLength(windows)
 			t.Logf("DivvyExact(%v, %d, %d) => %v", ToSlice(seq), size, skip, ToSlice(windows))
 			require.Equal(t, expected, actual)
 		}
@@ -418,104 +186,64 @@ func TestDivvyExact_Len(t *testing.T) {
 	t.Run("overlapping pairs", check(FromValues(1, 2, 3, 4, 5).(FiniteSeq[int]), 2, 1))
 	t.Run("overlapping triplets", check(FromValues(1, 2, 3, 4, 5).(FiniteSeq[int]), 3, 2))
 	t.Run("overlapping triplets with remainder", check(FromValues(1, 2, 3, 4, 5, 6).(FiniteSeq[int]), 3, 2))
+
+	t.Run("should return empty sequence for empty sequence", func(t *testing.T) {
+		assert.True(t, IsInfinite(DivvyExact(Repeat(1), 1, 1)))
+	})
+}
+
+func TestDropLast(t *testing.T) {
+	t.Run("should return infinite seq as-is", func(t *testing.T) {
+		seq := comparableInfiniteSeq[int]{item: 42}
+		assert.Equal(t, seq, DropLast(seq, 42))
+	})
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.True(t, IsEmpty(DropLast(Empty[int](), 42)))
+	})
+	t.Run("should return seq as-is when dropping no items", func(t *testing.T) {
+		seq := FromValues(1, 2, 3)
+		assert.Equal(t, seq, DropLast(seq, 0))
+	})
+	t.Run("should return finite seq when dropping items from finite seq", func(t *testing.T) {
+		finiteSeq, isFiniteSeq := AsFiniteSeq(DropLast(FromValues(1, 2, 3, 4), 2))
+		assert.True(t, isFiniteSeq)
+		assert.Equal(t, 2, finiteSeq.Len())
+	})
+	t.Run("should return zero as length when dropping more items than present in a finite seq", func(t *testing.T) {
+		finiteSeq, _ := AsFiniteSeq(DropLast(FromValues(1, 2, 3), 5))
+		assert.Equal(t, 0, finiteSeq.Len())
+	})
 }
 
 func TestEmpty(t *testing.T) {
-	require.Empty(t, ToSlice(Empty[int]()))
-	require.Implements(t, (*Lener)(nil), Empty[int]())
-	require.Zero(t, Empty[int]().(Lener).Len())
+	assert.Empty(t, ToSlice(Empty[int]()))
+	assert.Equal(t, 0, Len(Empty[int]()))
+	assert.True(t, IsFinite(Empty[int]()))
 }
 
 func TestEnumerate(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		want Seq[Pair[int, int]]
-	}{
-		"empty seq": {
-			seq:  Empty[int](),
-			want: Empty[Pair[int, int]](),
-		},
-		"some seq": {
-			seq:  FromValues(11, 22, 33, 44, 55),
-			want: FromValues(pairOf(0, 11), pairOf(1, 22), pairOf(2, 33), pairOf(3, 44), pairOf(4, 55)),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, ToSlice(testCase.want), ToSlice(Enumerate(testCase.seq)))
-		})
-	}
+	t.Run("should return finite seq for finite seq", func(t *testing.T) {
+		assert.True(t, IsFinite(Enumerate(FromValues(1, 2, 3))))
+	})
+	t.Run("should return infinite seq for infinite seq", func(t *testing.T) {
+		assert.True(t, IsInfinite(Enumerate(Repeat(42))))
+	})
 }
 
 func TestFilter(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		pred func(int) bool
-		want Seq[int]
-	}{
-		"empty seq": {
-			seq:  Empty[int](),
-			pred: func(i int) bool { return true },
-			want: Empty[int](),
-		},
-		"every other": {
-			seq:  FromValues(1, 2, 3, 4),
-			pred: func(i int) bool { return i%2 == 0 },
-			want: FromValues(2, 4),
-		},
-		"take all": {
-			seq:  FromValues(1, 2, 3, 4),
-			pred: func(i int) bool { return true },
-			want: FromValues(1, 2, 3, 4),
-		},
-		"take none": {
-			seq:  FromValues(1, 2, 3, 4),
-			pred: func(i int) bool { return false },
-			want: Empty[int](),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(Filter(testCase.seq, testCase.pred)))
-		})
-	}
+	t.Run("should return infinite, possibly divergent seq for infinite seq", func(t *testing.T) {
+		seq := Filter(Repeat(42), func(int) bool { return false })
+		assert.True(t, IsInfinite(seq), "should be marked infinite")
+		assert.True(t, CanDiverge(seq), "should be marked divergent")
+	})
 }
 
 func TestFilterMap(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		fn   func(int) (int, bool)
-		want Seq[int]
-	}{
-		"empty seq": {
-			seq:  Empty[int](),
-			fn:   func(i int) (int, bool) { return i + 1, true },
-			want: Empty[int](),
-		},
-		"every other": {
-			seq:  FromValues(1, 2, 3, 4),
-			fn:   func(i int) (int, bool) { return i * 2, i%2 == 0 },
-			want: FromValues(4, 8),
-		},
-		"take all": {
-			seq:  FromValues(1, 2, 3, 4),
-			fn:   func(i int) (int, bool) { return i + 1, true },
-			want: FromValues(2, 3, 4, 5),
-		},
-		"take none": {
-			seq:  FromValues(1, 2, 3, 4),
-			fn:   func(i int) (int, bool) { return i * 0, false },
-			want: Empty[int](),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(FilterMap(testCase.seq, testCase.fn)))
-		})
-	}
+	t.Run("should return infinite, possibly divergent seq for infinite seq", func(t *testing.T) {
+		seq := FilterMap(Repeat(42), func(int) (int, bool) { return 0, false })
+		assert.True(t, IsInfinite(seq), "should be marked infinite")
+		assert.True(t, CanDiverge(seq), "should be marked divergent")
+	})
 }
 
 func TestFilterWithIndex(t *testing.T) {
@@ -575,7 +303,7 @@ func TestFirst(t *testing.T) {
 			wantHasFirst: true,
 		},
 		"infinite seq": {
-			seq:          GenerateWithIndex(func(idx int) int { return idx + 2 }),
+			seq:          Count(2, 1),
 			wantFirst:    2,
 			wantHasFirst: true,
 		},
@@ -630,57 +358,78 @@ func TestFlatten(t *testing.T) {
 	}
 }
 
-func TestForEachWithIndex(t *testing.T) {
-	ForEachWithIndex(FromValues(1, 2, 3, 4), func(i int, e int) {
-		require.Equal(t, i, e-1)
+func TestFold(t *testing.T) {
+	t.Run("empty seq", func(t *testing.T) {
+		require.Equal(t, 42, Fold(Empty[int](), 42, func(a int, e int) int { return a + e }))
+	})
+	t.Run("offset sum", func(t *testing.T) {
+		require.Equal(t, 20, Fold(FromValues(1, 2, 3, 4), 10, func(a int, e int) int { return a + e }))
 	})
 }
 
-func TestForEachUntilWithIndex(t *testing.T) {
-	var vals []int
-	ForEachUntilWithIndex(FromValues(1, 2, 3, 4), func(i int, e int) bool {
-		require.Equal(t, i, e-1)
-		vals = append(vals, e)
-		return len(vals) > 2
-	})
-	require.Equal(t, []int{1, 2, 3}, vals)
-}
+func TestFolds(t *testing.T) {
+	const maxSamples = 100
+	testCases := map[string]struct {
+		seq  Seq[int]
+		seed int
+		op   func(int, int) int
+		want Seq[int]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			seed: 42,
+			op:   add[int],
+			want: FromValues(42),
+		},
+		"singleton seq": {
+			seq:  FromValues(42),
+			seed: 21,
+			op:   add[int],
+			want: FromValues(21, 63),
+		},
+		"multi-element seq": {
+			seq:  FromValues(1, 2, 3, 4),
+			seed: 1,
+			op:   add[int],
+			want: FromValues(1, 2, 4, 7, 11),
+		},
+		"infinite seq": {
+			seq:  Repeat(1),
+			seed: 0,
+			op:   add[int],
+			want: Count(0, 1),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, ToSlice(Take(testCase.want, maxSamples)), ToSlice(Take(Folds(testCase.seq, testCase.seed, testCase.op), maxSamples)))
+		})
+	}
 
-func TestForEachWhile(t *testing.T) {
-	var vals []int
-	ForEachWhile(FromValues(1, 2, 3, 4), func(i int) bool {
-		vals = append(vals, i)
-		return len(vals) < 3
+	t.Run("break early", func(t *testing.T) {
+		assert.Equal(t, []int{42}, ToSlice(Take(Folds(Repeat(1), 42, add), 1)))
 	})
-	require.Equal(t, []int{1, 2, 3}, vals)
-}
-
-func TestForEachWhileWithIndex(t *testing.T) {
-	var vals []int
-	ForEachWhileWithIndex(FromValues(1, 2, 3, 4), func(i int, e int) bool {
-		require.Equal(t, i, e-1)
-		vals = append(vals, e)
-		return len(vals) < 3
-	})
-	require.Equal(t, []int{1, 2, 3}, vals)
 }
 
 func TestFromValue(t *testing.T) {
-	seq := FromValue(42)
+	seq := Singleton(42)
 	require.Equal(t, []int{42}, ToSlice(seq))
-	require.Equal(t, 1, seq.(Lener).Len())
+	require.Equal(t, 1, seq.(FiniteSeq[int]).Len())
 }
 
 func TestFromSlicePtrs(t *testing.T) {
 	vals := []int{1, 2, 3, 4}
 	seq := FromSlicePtrs(vals)
-	ForEach(seq, func(i *int) { *i = *i * 2 })
+	for p := range ToIter(seq) {
+		*p = *p * 2
+	}
 	assert.Equal(t, []int{2, 4, 6, 8}, vals)
 
 	// cover Len() method
-	lener, ok := seq.(Lener)
-	require.True(t, ok)
-	assert.Equal(t, len(vals), lener.Len())
+	length, hasLength := getLength(seq)
+	require.True(t, hasLength)
+	assert.Equal(t, len(vals), length)
 
 	// cover early exit
 	assert.Equal(t, vals[:3], ToSlice(Take(Map(seq, func(p *int) int { return *p }), 3)))
@@ -706,27 +455,33 @@ func TestGenerate(t *testing.T) {
 	}
 }
 
-func TestGenerateWithIndex(t *testing.T) {
+func TestIsEmpty(t *testing.T) {
 	testCases := map[string]struct {
-		fn   func(idx int) int
-		want []int
+		seq  Seq[int]
+		want bool
 	}{
-		"count by 2": {
-			fn: func(idx int) int {
-				return idx * 2
-			},
-			want: []int{0, 2, 4, 6},
+		"empty seq": {
+			seq:  Empty[int](),
+			want: true,
+		},
+		"some seq": {
+			seq:  FromValues(1, 2, 3),
+			want: false,
+		},
+		"infinite seq": {
+			seq:  Repeat(42),
+			want: false,
 		},
 	}
 	for name, testCase := range testCases {
 		testCase := testCase
 		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, testCase.want, ToSlice(Take(GenerateWithIndex(testCase.fn), len(testCase.want))))
+			require.Equal(t, testCase.want, IsEmpty(testCase.seq))
 		})
 	}
 }
 
-func TestIntersperse(t *testing.T) {
+func TestJoin(t *testing.T) {
 	testCases := map[string]struct {
 		seq  Seq[int]
 		val  int
@@ -770,32 +525,6 @@ func TestIntersperse(t *testing.T) {
 	t.Run("infinite seq", func(t *testing.T) {
 		require.Equal(t, ToSlice(FromValues(1, 42, 1, 42, 1, 42)), ToSlice(Take(Intersperse(Repeat(1), 42), 6)))
 	})
-}
-
-func TestIsEmpty(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		want bool
-	}{
-		"empty seq": {
-			seq:  Empty[int](),
-			want: true,
-		},
-		"some seq": {
-			seq:  FromValues(1, 2, 3),
-			want: false,
-		},
-		"infinite seq": {
-			seq:  Repeat(42),
-			want: false,
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, testCase.want, IsEmpty(testCase.seq))
-		})
-	}
 }
 
 func TestLast(t *testing.T) {
@@ -886,32 +615,6 @@ func TestMapWithIndex(t *testing.T) {
 	})
 }
 
-func TestPartialSums(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		want Seq[int]
-	}{
-		"empty seq": {
-			seq:  Empty[int](),
-			want: Empty[int](),
-		},
-		"singleton seq": {
-			seq:  FromValues(42),
-			want: FromValues(42),
-		},
-		"multi-element seq": {
-			seq:  FromValues(1, 2, 3, 4),
-			want: FromValues(1, 3, 6, 10),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, ToSlice(testCase.want), ToSlice(PartialSums(testCase.seq)))
-		})
-	}
-}
-
 func TestReductions(t *testing.T) {
 	const maxSamples = 100
 	testCases := map[string]struct {
@@ -937,7 +640,7 @@ func TestReductions(t *testing.T) {
 		"infinite seq": {
 			seq:  Repeat(1),
 			op:   add[int],
-			want: GenerateWithIndex(func(idx int) int { return idx + 1 }),
+			want: Count(1, 1),
 		},
 	}
 	for name, testCase := range testCases {
@@ -948,181 +651,8 @@ func TestReductions(t *testing.T) {
 	}
 }
 
-func TestReject(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		pred func(int) bool
-		want Seq[int]
-	}{
-		"empty seq": {
-			seq:  Empty[int](),
-			pred: func(i int) bool { return true },
-			want: Empty[int](),
-		},
-		"every other": {
-			seq:  FromValues(1, 2, 3, 4),
-			pred: func(i int) bool { return i%2 == 0 },
-			want: FromValues(1, 3),
-		},
-		"take all": {
-			seq:  FromValues(1, 2, 3, 4),
-			pred: func(i int) bool { return false },
-			want: FromValues(1, 2, 3, 4),
-		},
-		"take none": {
-			seq:  FromValues(1, 2, 3, 4),
-			pred: func(i int) bool { return true },
-			want: Empty[int](),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(Reject(testCase.seq, testCase.pred)))
-		})
-	}
-}
-
-func TestRejectWithIndex(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		pred func(int, int) bool
-		want Seq[int]
-	}{
-		"empty seq": {
-			seq:  Empty[int](),
-			pred: func(idx int, itm int) bool { return true },
-			want: Empty[int](),
-		},
-		"every other": {
-			seq:  FromValues(1, 2, 3, 4),
-			pred: func(idx int, itm int) bool { return idx%2 == 0 },
-			want: FromValues(2, 4),
-		},
-		"take all": {
-			seq:  FromValues(1, 2, 3, 4),
-			pred: func(idx int, itm int) bool { return false },
-			want: FromValues(1, 2, 3, 4),
-		},
-		"take none": {
-			seq:  FromValues(1, 2, 3, 4),
-			pred: func(idx int, itm int) bool { return true },
-			want: Empty[int](),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(RejectWithIndex(testCase.seq, testCase.pred)))
-		})
-	}
-}
-
 func TestRepeat(t *testing.T) {
 	require.Equal(t, ToSlice(RepeatN(42, 6)), ToSlice(Take(Repeat(42), 6)))
-}
-
-func TestRoundRobin(t *testing.T) {
-	testCases := map[string]struct {
-		seqs []Seq[int]
-		want Seq[int]
-	}{
-		"no seqs": {
-			seqs: []Seq[int]{},
-			want: Empty[int](),
-		},
-		"one seq": {
-			seqs: []Seq[int]{
-				FromValues(1, 2, 3, 4),
-			},
-			want: FromValues(1, 2, 3, 4),
-		},
-		"two seqs": {
-			seqs: []Seq[int]{
-				FromValues(1, 3),
-				FromValues(2, 4),
-			},
-			want: FromValues(1, 2, 3, 4),
-		},
-		"more seqs": {
-			seqs: []Seq[int]{
-				FromValues(1),
-				FromValues(2, 2),
-				FromValues(3, 3, 3),
-				FromValues(4, 4, 4, 4),
-			},
-			want: FromValues(1, 2, 3, 4, 2, 3, 4, 3, 4, 4),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(RoundRobin(testCase.seqs...)))
-		})
-	}
-	t.Run("break early", func(t *testing.T) {
-		require.Equal(t, ToSlice(FromValues(1, 2, 3, 4, 2, 3)), ToSlice(Take(RoundRobin(RepeatN(1, 1), RepeatN(2, 2), RepeatN(3, 3), RepeatN(4, 4)), 6)))
-	})
-	t.Run("break even earlier", func(t *testing.T) {
-		require.Equal(t, ToSlice(FromValues(1, 2, 3)), ToSlice(Take(RoundRobin(RepeatN(1, 1), RepeatN(2, 2), RepeatN(3, 3), RepeatN(4, 4)), 3)))
-	})
-	t.Run("with infinite seq", func(t *testing.T) {
-		require.Equal(t, ToSlice(FromValues(1, 2, 42, 3, 4, 42, 42, 42)), ToSlice(Take(RoundRobin(FromValues(1, 3), FromValues(2, 4), Repeat(42)), 8)))
-	})
-}
-
-func TestSeededReduce(t *testing.T) {
-	t.Run("empty seq", func(t *testing.T) {
-		require.Equal(t, 42, SeededReduce(Empty[int](), 42, func(a int, e int) int { return a + e }))
-	})
-	t.Run("offset sum", func(t *testing.T) {
-		require.Equal(t, 20, SeededReduce(FromValues(1, 2, 3, 4), 10, func(a int, e int) int { return a + e }))
-	})
-}
-
-func TestSeededReductions(t *testing.T) {
-	const maxSamples = 100
-	testCases := map[string]struct {
-		seq  Seq[int]
-		seed int
-		op   func(int, int) int
-		want Seq[int]
-	}{
-		"empty seq": {
-			seq:  Empty[int](),
-			seed: 42,
-			op:   add[int],
-			want: FromValues(42),
-		},
-		"singleton seq": {
-			seq:  FromValues(42),
-			seed: 21,
-			op:   add[int],
-			want: FromValues(21, 63),
-		},
-		"multi-element seq": {
-			seq:  FromValues(1, 2, 3, 4),
-			seed: 1,
-			op:   add[int],
-			want: FromValues(1, 2, 4, 7, 11),
-		},
-		"infinite seq": {
-			seq:  Repeat(1),
-			seed: 0,
-			op:   add[int],
-			want: GenerateWithIndex(func(idx int) int { return idx }),
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			assert.Equal(t, ToSlice(Take(testCase.want, maxSamples)), ToSlice(Take(SeededReductions(testCase.seq, testCase.seed, testCase.op), maxSamples)))
-		})
-	}
-
-	t.Run("break early", func(t *testing.T) {
-		assert.Equal(t, []int{42}, ToSlice(Take(SeededReductions(Repeat(1), 42, add), 1)))
-	})
 }
 
 func TestSkip(t *testing.T) {
@@ -1155,11 +685,11 @@ func TestSkip(t *testing.T) {
 	for name, testCase := range testCases {
 		testCase := testCase
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(Skip(testCase.seq, testCase.n)))
+			require.Equal(t, ToSlice(testCase.want), ToSlice(Drop(testCase.seq, testCase.n)))
 		})
 	}
 	t.Run("infinite seq", func(t *testing.T) {
-		require.Equal(t, ToSlice(FromValues(3, 4, 1, 2, 3, 4, 1, 2)), ToSlice(Take(Skip(Cycle(FromValues(1, 2, 3, 4)), 2), 8)))
+		require.Equal(t, ToSlice(FromValues(3, 4, 1, 2, 3, 4, 1, 2)), ToSlice(Take(Drop(Cycle(FromValues(1, 2, 3, 4)), 2), 8)))
 	})
 }
 
@@ -1193,7 +723,7 @@ func TestSkipWhile(t *testing.T) {
 	for name, testCase := range testCases {
 		testCase := testCase
 		t.Run(name, func(t *testing.T) {
-			require.Equal(t, ToSlice(testCase.want), ToSlice(SkipWhile(testCase.seq, testCase.pred)))
+			require.Equal(t, ToSlice(testCase.want), ToSlice(DropWhile(testCase.seq, testCase.pred)))
 		})
 	}
 }
@@ -1216,6 +746,32 @@ func TestSum(t *testing.T) {
 		testCase := testCase
 		t.Run(name, func(t *testing.T) {
 			assert.Equal(t, testCase.want, Sum(testCase.seq))
+		})
+	}
+}
+
+func TestSums(t *testing.T) {
+	testCases := map[string]struct {
+		seq  Seq[int]
+		want Seq[int]
+	}{
+		"empty seq": {
+			seq:  Empty[int](),
+			want: Empty[int](),
+		},
+		"singleton seq": {
+			seq:  FromValues(42),
+			want: FromValues(42),
+		},
+		"multi-element seq": {
+			seq:  FromValues(1, 2, 3, 4),
+			want: FromValues(1, 3, 6, 10),
+		},
+	}
+	for name, testCase := range testCases {
+		testCase := testCase
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, ToSlice(testCase.want), ToSlice(Sums(testCase.seq)))
 		})
 	}
 }
@@ -1254,11 +810,10 @@ func TestTake(t *testing.T) {
 		})
 	}
 	t.Run("takes only n", func(t *testing.T) {
-		require.Equal(t, []int{0, 1, 2}, ToSlice(Take(GenerateWithIndex(func(idx int) int {
+		require.Equal(t, []int{0, 1, 2}, ToSlice(Take(Inspect(Count(0, 1), func(idx int) {
 			if idx == 3 {
 				require.FailNow(t, "took more than required")
 			}
-			return idx
 		}), 3)))
 	})
 }
@@ -1294,49 +849,6 @@ func TestTakeWhile(t *testing.T) {
 		testCase := testCase
 		t.Run(name, func(t *testing.T) {
 			require.Equal(t, ToSlice(testCase.want), ToSlice(TakeWhile(testCase.seq, testCase.pred)))
-		})
-	}
-}
-
-func TestToSet(t *testing.T) {
-	testCases := map[string]struct {
-		seq  Seq[int]
-		want map[int]bool
-	}{
-		"empty seq": {
-			seq:  Empty[int](),
-			want: map[int]bool{},
-		},
-		"unique values": {
-			seq:  FromValues(1, 2, 3, 4),
-			want: map[int]bool{1: true, 2: true, 3: true, 4: true},
-		},
-		"repeating values": {
-			seq:  FromValues(1, 2, 3, 4, 3, 2, 1),
-			want: map[int]bool{1: true, 2: true, 3: true, 4: true},
-		},
-		"seq without len": {
-			seq: SeqFunc(func(f func(int) bool) {
-				if f(1) {
-					return
-				}
-				if f(2) {
-					return
-				}
-				if f(1) {
-					return
-				}
-				if f(2) {
-					return
-				}
-			}),
-			want: map[int]bool{1: true, 2: true},
-		},
-	}
-	for name, testCase := range testCases {
-		testCase := testCase
-		t.Run(name, func(t *testing.T) {
-			require.Equal(t, testCase.want, ToSet(testCase.seq))
 		})
 	}
 }
@@ -1436,6 +948,19 @@ func TestZipWith(t *testing.T) {
 	}
 }
 
-func hideLen[Item any](seq Seq[Item]) Seq[Item] {
-	return SeqFunc(seq.ForEachUntil)
+func hideCard[Item any](seq Seq[Item]) Seq[Item] {
+	return FromIter(ToIter(seq))
+}
+
+func add[Value Summable](a, b Value) Value {
+	return a + b
+}
+
+type comparableInfiniteSeq[Item any] struct {
+	item Item
+	infiniteMark
+}
+
+func (seq comparableInfiniteSeq[Item]) ForEachWhile(yield func(Item) bool) {
+	Repeat(seq.item).ForEachWhile(yield)
 }

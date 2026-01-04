@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/siliconbrain/go-seqs/internal"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -256,6 +257,147 @@ func TestCycle2(t *testing.T) {
 	})
 }
 
+func TestDemuxMap2(t *testing.T) {
+	type Tag byte
+	const (
+		Tag1 Tag = iota
+		Tag2
+	)
+	type Opt1 int
+	type Opt2 int
+	type Mux struct {
+		Opt1 Opt1
+		Opt2 Opt2
+		Tag  Tag
+	}
+	collect := func(seq MuxSeq2[Opt1, Opt2]) []Mux {
+		return slices.Collect(MuxMap2(seq,
+			func(v Opt1) Mux { return Mux{Opt1: v, Tag: Tag1} },
+			func(v Opt2) Mux { return Mux{Opt2: v, Tag: Tag2} },
+		))
+	}
+	demux := func(i Mux, k1 func(Opt1), k2 func(Opt2)) {
+		switch i.Tag {
+		case Tag1:
+			k1(i.Opt1)
+		case Tag2:
+			k2(i.Opt2)
+		}
+	}
+
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, collect(DemuxMap2(Empty[Mux], demux)))
+	})
+	t.Run("should return mux seq with demuxed items", func(t *testing.T) {
+		items := []Mux{
+			{Opt1: 42, Tag: Tag1},
+			{Opt2: 21, Tag: Tag2},
+		}
+		assert.Equal(t, items, collect(DemuxMap2(slices.Values(items), demux)))
+	})
+}
+
+func TestDemuxMap3(t *testing.T) {
+	type Tag byte
+	const (
+		Tag1 Tag = iota
+		Tag2
+		Tag3
+	)
+	type Opt1 int
+	type Opt2 int
+	type Opt3 int
+	type Mux struct {
+		Opt1 Opt1
+		Opt2 Opt2
+		Opt3 Opt3
+		Tag  Tag
+	}
+	collect := func(seq MuxSeq3[Opt1, Opt2, Opt3]) []Mux {
+		return slices.Collect(MuxMap3(seq,
+			func(v Opt1) Mux { return Mux{Opt1: v, Tag: Tag1} },
+			func(v Opt2) Mux { return Mux{Opt2: v, Tag: Tag2} },
+			func(v Opt3) Mux { return Mux{Opt3: v, Tag: Tag3} },
+		))
+	}
+	demux := func(i Mux, k1 func(Opt1), k2 func(Opt2), k3 func(Opt3)) {
+		switch i.Tag {
+		case Tag1:
+			k1(i.Opt1)
+		case Tag2:
+			k2(i.Opt2)
+		case Tag3:
+			k3(i.Opt3)
+		}
+	}
+
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, collect(DemuxMap3(Empty[Mux], demux)))
+	})
+	t.Run("should return mux seq with demuxed items", func(t *testing.T) {
+		items := []Mux{
+			{Opt1: 42, Tag: Tag1},
+			{Opt2: 21, Tag: Tag2},
+			{Opt3: 84, Tag: Tag3},
+		}
+		assert.Equal(t, items, collect(DemuxMap3(slices.Values(items), demux)))
+	})
+}
+
+func TestDemuxMap4(t *testing.T) {
+	type Tag byte
+	const (
+		Tag1 Tag = iota
+		Tag2
+		Tag3
+		Tag4
+	)
+	type Opt1 int
+	type Opt2 int
+	type Opt3 int
+	type Opt4 int
+	type Mux struct {
+		Opt1 Opt1
+		Opt2 Opt2
+		Opt3 Opt3
+		Opt4 Opt4
+		Tag  Tag
+	}
+	collect := func(seq MuxSeq4[Opt1, Opt2, Opt3, Opt4]) []Mux {
+		return slices.Collect(MuxMap4(seq,
+			func(v Opt1) Mux { return Mux{Opt1: v, Tag: Tag1} },
+			func(v Opt2) Mux { return Mux{Opt2: v, Tag: Tag2} },
+			func(v Opt3) Mux { return Mux{Opt3: v, Tag: Tag3} },
+			func(v Opt4) Mux { return Mux{Opt4: v, Tag: Tag4} },
+		))
+	}
+	demux := func(i Mux, k1 func(Opt1), k2 func(Opt2), k3 func(Opt3), k4 func(Opt4)) {
+		switch i.Tag {
+		case Tag1:
+			k1(i.Opt1)
+		case Tag2:
+			k2(i.Opt2)
+		case Tag3:
+			k3(i.Opt3)
+		case Tag4:
+			k4(i.Opt4)
+		}
+	}
+
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, collect(DemuxMap4(Empty[Mux], demux)))
+	})
+	t.Run("should return mux seq with demuxed items", func(t *testing.T) {
+		items := []Mux{
+			{Opt1: 42, Tag: Tag1},
+			{Opt2: 21, Tag: Tag2},
+			{Opt3: 84, Tag: Tag3},
+			{Opt4: -42, Tag: Tag4},
+		}
+		assert.Equal(t, items, collect(DemuxMap4(slices.Values(items), demux)))
+	})
+}
+
 func TestDivvy(t *testing.T) {
 	t.Run("zero count", func(t *testing.T) {
 		assert.Panics(t, func() {
@@ -407,6 +549,155 @@ func TestDivvyExact(t *testing.T) {
 	}
 	t.Run("break early", func(t *testing.T) {
 		assert.Equal(t, [][]int{{1, 2}, {2, 3}}, slices.Collect(Take(DivvyExact(FromValues(1, 2, 3, 4, 5, 6), 2, 1), 2)))
+	})
+}
+
+func TestDrop(t *testing.T) {
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(Drop(Empty[int], 42)))
+	})
+	t.Run("should return all items when dropping zero items from seq", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3}, slices.Collect(Drop(FromValues(1, 2, 3), 0)))
+	})
+	t.Run("should return empty seq when dropping all items from seq", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(Drop(FromValues(1, 2, 3), 3)))
+	})
+	t.Run("should return empty seq when dropping more items from seq", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(Drop(FromValues(1, 2, 3), 4)))
+	})
+	t.Run("should return seq without dropped items", func(t *testing.T) {
+		assert.Equal(t, []int{3}, slices.Collect(Drop(FromValues(1, 2, 3), 2)))
+	})
+	t.Run("should return all items when dropping negative number of items", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3}, slices.Collect(Drop(FromValues(1, 2, 3), -42)))
+	})
+	t.Run("should support breaking iteration", func(t *testing.T) {
+		assert.Equal(t, []int{2}, slices.Collect(Take(Drop(FromValues(1, 2, 3), 1), 1)))
+	})
+}
+
+func TestDrop2(t *testing.T) {
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, collect2(Drop2(Empty2[int, string], 0)))
+	})
+	t.Run("should return seq of all pairs when dropping zero pairs from seq", func(t *testing.T) {
+		assert.Equal(t, pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}},
+			collect2(Drop2(pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}}.All, 0)))
+	})
+	t.Run("should return empty seq when dropping all pairs from seq", func(t *testing.T) {
+		assert.Empty(t, collect2(Drop2(pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}}.All, 4)))
+	})
+	t.Run("should return empty seq when dropping more pairs from seq", func(t *testing.T) {
+		assert.Empty(t, collect2(Drop2(pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}}.All, 4)))
+	})
+	t.Run("should return seq without dropped pairs", func(t *testing.T) {
+		assert.Equal(t, pairs[int, string]{{3, "c"}}, collect2(Drop2(pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}}.All, 2)))
+	})
+	t.Run("should return seq of all items when dropping negative number of pairs", func(t *testing.T) {
+		assert.Equal(t, pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}},
+			collect2(Drop2(pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}}.All, -42)))
+	})
+	t.Run("should support breaking iteration", func(t *testing.T) {
+		assert.Equal(t, pairs[int, string]{{2, "b"}},
+			collect2(Take2(Drop2(pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}}.All, 1), 1)))
+	})
+}
+
+func TestDropLast(t *testing.T) {
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(DropLast(Empty[int], 42)))
+	})
+	t.Run("should return seq of all items when dropping negative number of items", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3, 4}, slices.Collect(DropLast(FromValues(1, 2, 3, 4), -42)))
+	})
+	t.Run("should return seq of all items when dropping zero items from seq", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3, 4}, slices.Collect(DropLast(FromValues(1, 2, 3, 4), 0)))
+	})
+	t.Run("should return seq without dropped items", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2}, slices.Collect(DropLast(FromValues(1, 2, 3, 4), 2)))
+	})
+	t.Run("should return empty seq when dropping all items", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(DropLast(FromValues(1, 2, 3, 4), 4)))
+	})
+	t.Run("should return empty seq when dropping more items", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(DropLast(FromValues(1, 2, 3, 4), 5)))
+	})
+	t.Run("should support breaking iteration", func(t *testing.T) {
+		assert.Equal(t, []int{1}, slices.Collect(Take(DropLast(FromValues(1, 2, 3, 4), 2), 1)))
+	})
+	t.Run("should return seq without dropped item when dropping single item", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3}, slices.Collect(DropLast(FromValues(1, 2, 3, 4), 1)))
+	})
+	t.Run("should return empty seq when dropping single item from empty seq", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(DropLast(Empty[int], 1)))
+	})
+}
+
+func TestDropLast2(t *testing.T) {
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, collect2(DropLast2(Empty2[int, string], 42)))
+	})
+	t.Run("should return seq of all items when dropping negative number of items", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3, 4}, slices.Collect(DropLast(FromValues(1, 2, 3, 4), -42)))
+	})
+	t.Run("should return seq of all items when dropping zero items from seq", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3, 4}, slices.Collect(DropLast(FromValues(1, 2, 3, 4), 0)))
+	})
+	t.Run("should return seq without dropped items", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2}, slices.Collect(DropLast(FromValues(1, 2, 3, 4), 2)))
+	})
+	t.Run("should return empty seq when dropping all items", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(DropLast(FromValues(1, 2, 3, 4), 4)))
+	})
+	t.Run("should return empty seq when dropping more items", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(DropLast(FromValues(1, 2, 3, 4), 5)))
+	})
+	t.Run("should support breaking iteration", func(t *testing.T) {
+		assert.Equal(t, []int{1}, slices.Collect(Take(DropLast(FromValues(1, 2, 3, 4), 2), 1)))
+	})
+	t.Run("should return seq without dropped item when dropping single item", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3}, slices.Collect(DropLast(FromValues(1, 2, 3, 4), 1)))
+	})
+	t.Run("should return empty seq when dropping single item from empty seq", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(DropLast(Empty[int], 1)))
+	})
+}
+
+func TestDropWhile(t *testing.T) {
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(DropWhile(Empty[int], func(int) bool { return false })))
+	})
+	t.Run("should return empty seq for const true pred", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(DropWhile(RepeatN(42, 7), func(int) bool { return true })))
+	})
+	t.Run("should return tail of non-empty seq not matching pred", func(t *testing.T) {
+		assert.Equal(t, []int{4, 5}, slices.Collect(DropWhile(FromValues(1, 2, 3, 4, 5), func(v int) bool { return v < 4 })))
+	})
+	t.Run("break early", func(t *testing.T) {
+		assert.Equal(t, []int{4, 5, 6}, slices.Collect(Take(DropWhile(Count(1, 1), func(v int) bool { return v < 4 }), 3)))
+	})
+}
+
+func TestDropWhile2(t *testing.T) {
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, collect2(DropWhile2(Empty2[int, string], func(int, string) bool { return false })))
+	})
+	t.Run("should return empty seq for const true pred", func(t *testing.T) {
+		assert.Empty(t, collect2(DropWhile2(RepeatN2(42, "fourty-two", 7), func(int, string) bool { return true })))
+	})
+	t.Run("should return tail of non-empty seq not matching pred", func(t *testing.T) {
+		assert.Equal(t, pairs[int, string]{{3, "ccc"}, {4, "dddd"}, {5, "eeeee"}},
+			collect2(DropWhile2(
+				UnpackMap(FromValues("a", "bb", "ccc", "dddd", "eeeee"), func(s string) (int, string) { return len(s), s }),
+				func(v int, s string) bool { return v < 4 && len(s) < 3 },
+			)),
+		)
+	})
+	t.Run("break early", func(t *testing.T) {
+		assert.Equal(t, pairs[int, string]{{3, "aaa"}, {4, "aaaa"}}, collect2(Take2(DropWhile2(
+			UnpackMap(Count("a", "a"), func(s string) (int, string) { return len(s), s }),
+			func(v int, s string) bool { return v < 3 },
+		), 2)))
 	})
 }
 
@@ -669,6 +960,127 @@ func TestFolds2(t *testing.T) {
 	})
 }
 
+func TestFoldsWhile(t *testing.T) {
+	t.Run("should return singleton seq of seed for empty seq", func(t *testing.T) {
+		assert.Equal(t, []int{42}, slices.Collect(FoldsWhile(Empty[int], 42, func(r, i int) (int, bool) { return r + i, true })))
+	})
+	t.Run("returned seq should end when false is returned from combine", func(t *testing.T) {
+		assert.Equal(t, []int{1, 2, 3, 4}, slices.Collect(FoldsWhile(Repeat(1), 1, func(r, i int) (int, bool) { return r + i, r < 4 })))
+	})
+	t.Run("break after seed", func(t *testing.T) {
+		assert.Equal(t, []int{0}, slices.Collect(Take(FoldsWhile(Repeat(1), 0, func(r, i int) (int, bool) { return r + i, r < 4 }), 1)))
+	})
+}
+
+func TestFoldsWhile2(t *testing.T) {
+	t.Run("should return singleton seq of seed for empty seq", func(t *testing.T) {
+		assert.Equal(t, []int{42},
+			slices.Collect(FoldsWhile2(Empty2[int, string], 42, func(r, i int, s string) (int, bool) { return r + i + len(s), true })))
+	})
+	t.Run("returned seq should end when false is returned from combine", func(t *testing.T) {
+		assert.Equal(t, []int{1, 3, 5},
+			slices.Collect(FoldsWhile2(Repeat2(1, "a"), 1, func(r, i int, s string) (int, bool) { return r + i + len(s), r < 4 })))
+	})
+	t.Run("break after seed", func(t *testing.T) {
+		assert.Equal(t, []int{0},
+			slices.Collect(Take(FoldsWhile2(Repeat2(1, "a"), 0, func(r, i int, s string) (int, bool) { return r + i + len(s), r < 4 }), 1)))
+	})
+}
+
+func TestFoldWhile(t *testing.T) {
+	t.Run("should return seed for empty seq", func(t *testing.T) {
+		assert.Equal(t, 42, FoldWhile(Empty[int], 42, func(r, i int) (int, bool) { return r + i, true }))
+	})
+	t.Run("should return last partial before returning false from combine", func(t *testing.T) {
+		assert.Equal(t, 4, FoldWhile(Repeat(1), 0, func(r, i int) (int, bool) { return r + i, r < 4 }))
+	})
+}
+
+func TestFoldWhile2(t *testing.T) {
+	t.Run("should return seed for empty seq", func(t *testing.T) {
+		assert.Equal(t, 42, FoldWhile2(Empty2[int, string], 42, func(r, i int, s string) (int, bool) { return r + i + len(s), true }))
+	})
+	t.Run("should return last partial before returning false from combine", func(t *testing.T) {
+		assert.Equal(t, 5, FoldWhile2(Repeat2(1, "a"), 1, func(r, i int, s string) (int, bool) { return r + i + len(s), r < 4 }))
+	})
+}
+
+func TestGenerate(t *testing.T) {
+	makeSeq := func() Seq[int] {
+		s := 1
+		return Generate(func() int {
+			i := s
+			s++
+			return i
+		})
+	}
+	assert.Equal(t, []int{1, 2, 3, 4}, slices.Collect(Take(makeSeq(), 4)))
+}
+
+func TestGenerate2(t *testing.T) {
+	makeSeq := func() Seq2[int, string] {
+		s := 0
+		return Generate2(func() (int, string) {
+			i := s
+			s = (s + 1) % 26
+			return i + 1, string(rune('a' + i))
+		})
+	}
+	assert.Equal(t, pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}, {4, "d"}}, collect2(Take2(makeSeq(), 4)))
+}
+
+func TestGenerateWhile(t *testing.T) {
+	makeSeq := func() Seq[int] {
+		s := 0
+		return GenerateWhile(func() (int, bool) {
+			if s > 3 {
+				return -42, false
+			}
+			i := s
+			s++
+			return i + 1, true
+		})
+	}
+	assert.Equal(t, []int{1, 2, 3, 4}, slices.Collect(makeSeq()))
+}
+
+func TestGenerateWhile2(t *testing.T) {
+	makeSeq := func() Seq2[int, string] {
+		s := 0
+		return GenerateWhile2(func() (int, string, bool) {
+			if s > 3 {
+				return -42, "!", false
+			}
+			i := s
+			s = (s + 1) % 26
+			return i + 1, string(rune('a' + i)), true
+		})
+	}
+	assert.Equal(t, pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}, {4, "d"}}, collect2(makeSeq()))
+}
+
+func TestInspect(t *testing.T) {
+	var observed []int
+	assert.Equal(t,
+		slices.Collect(Inspect(
+			FromValues(1, 2, 3, 4),
+			func(v int) { observed = append(observed, v) },
+		)),
+		observed,
+	)
+}
+
+func TestInspect2(t *testing.T) {
+	var observed pairs[int, string]
+	assert.Equal(t,
+		collect2(Inspect2(
+			Enumerate(FromValues("a", "b", "c", "d")),
+			func(v int, s string) { observed = append(observed, internal.PairFrom(v, s)) },
+		)),
+		observed,
+	)
+}
+
 func TestInterleave(t *testing.T) {
 	t.Run("no seqs", func(t *testing.T) {
 		assert.Empty(t, slices.Collect(Interleave[int]()))
@@ -723,6 +1135,42 @@ func TestInterleave2(t *testing.T) {
 		}, collect2(Take2(Interleave2(
 			Repeat2(1, "a"), Repeat2(2, "b"), Repeat2(3, "c"),
 		), 9)))
+	})
+}
+
+func TestIntersperse(t *testing.T) {
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(Intersperse(Empty[int], 42)))
+	})
+	t.Run("should return seq with separators between all items", func(t *testing.T) {
+		assert.Equal(t, []int{1, 42, 2, 42, 3, 42, 42, 42, 4}, slices.Collect(Intersperse(FromValues(1, 2, 3, 42, 4), 42)))
+	})
+}
+
+func TestIntersperse2(t *testing.T) {
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, collect2(Intersperse2(Empty2[int, string], 42, "forty-two")))
+	})
+	t.Run("should return seq with separators between all items", func(t *testing.T) {
+		assert.Equal(t,
+			pairs[int, string]{
+				{1, "one"},
+				{42, "forty-two"},
+				{2, "two"},
+				{42, "forty-two"},
+				{3, "three"},
+				{42, "forty-two"},
+				{42, "forty-two"},
+				{42, "forty-two"},
+				{4, "four"},
+			},
+			collect2(Intersperse2(pairs[int, string]{
+				{1, "one"},
+				{2, "two"},
+				{3, "three"},
+				{42, "forty-two"},
+				{4, "four"},
+			}.All, 42, "forty-two")))
 	})
 }
 
@@ -809,6 +1257,15 @@ func TestMap2(t *testing.T) {
 	})
 }
 
+func TestMax(t *testing.T) {
+	t.Run("should return zero value for empty seq", func(t *testing.T) {
+		assert.Equal(t, 0, Max(Empty[int]))
+	})
+	t.Run("should return max value", func(t *testing.T) {
+		assert.Equal(t, 42, Max(FromValues(1, 2, 42, 4, -42, 0)))
+	})
+}
+
 func TestMemoize(t *testing.T) {
 	makeSingleShot := func(t *testing.T, seq Seq[int]) Seq[int] {
 		forced := false
@@ -859,6 +1316,48 @@ func TestMemoize2(t *testing.T) {
 	})
 }
 
+func TestMin(t *testing.T) {
+	t.Run("should return zero value for empty seq", func(t *testing.T) {
+		assert.Equal(t, 0, Min(Empty[int]))
+	})
+	t.Run("should return min value", func(t *testing.T) {
+		assert.Equal(t, -42, Min(FromValues(1, 2, 42, 4, -42, 0)))
+	})
+}
+
+func TestMuxMap2(t *testing.T) {
+	type Tag byte
+	const (
+		IntTag Tag = iota
+		StrTag
+	)
+	type IntOrStr struct {
+		Int int
+		Str string
+		Tag Tag
+	}
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(MuxMap2(EmptyMux2[int, string],
+			func(v int) IntOrStr { return IntOrStr{Int: v, Tag: IntTag} },
+			func(v string) IntOrStr { return IntOrStr{Str: v, Tag: StrTag} },
+		)))
+	})
+	t.Run("should return seq of all items", func(t *testing.T) {
+		assert.Equal(t, []IntOrStr{{Int: 42, Tag: IntTag}, {Str: "forty-two", Tag: StrTag}}, slices.Collect(MuxMap2(
+			func(yield1 func(int) bool, yield2 func(string) bool) {
+				if !yield1(42) {
+					return
+				}
+				if !yield2("forty-two") {
+					return
+				}
+			},
+			func(v int) IntOrStr { return IntOrStr{Int: v, Tag: IntTag} },
+			func(v string) IntOrStr { return IntOrStr{Str: v, Tag: StrTag} },
+		)))
+	})
+}
+
 func TestPackMap(t *testing.T) {
 	t.Run("empty seq", func(t *testing.T) {
 		assert.Empty(t, slices.Collect(PackMap(Empty2[[]rune, []byte],
@@ -876,6 +1375,20 @@ func TestPackMap(t *testing.T) {
 		for range PackMap(pairs[int, int]{{1, 3}, {2, 4}}.All, func(a, b int) int { return a + b }) {
 			break
 		}
+	})
+}
+
+func TestPanic(t *testing.T) {
+	reason := 42
+	assert.PanicsWithValue(t, reason, func() {
+		_ = slices.Collect(Panic[string](reason))
+	})
+}
+
+func TestPanic2(t *testing.T) {
+	reason := 42
+	assert.PanicsWithValue(t, reason, func() {
+		_ = collect2(Panic2[int, string](reason))
 	})
 }
 
@@ -999,6 +1512,47 @@ func TestReductions2(t *testing.T) {
 	})
 }
 
+func TestReduceWhile(t *testing.T) {
+	t.Run("should return zero for empty seq", func(t *testing.T) {
+		assert.Zero(t, ReduceWhile(Empty[int], func(r, i int) (int, bool) { return r + i, true }))
+	})
+}
+
+func TestReduceWhile2(t *testing.T) {
+	t.Run("should return zeros for empty seq", func(t *testing.T) {
+		res1, res2 := ReduceWhile2(Empty2[int, string], func(ri int, rs string, i int, s string) (int, string, bool) { return ri + i, rs + s, true })
+		assert.Zero(t, res1)
+		assert.Zero(t, res2)
+	})
+}
+
+func TestReductionsWhile(t *testing.T) {
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, slices.Collect(ReductionsWhile(Empty[int], func(r, i int) (int, bool) { return r + i, true })))
+	})
+	t.Run("should return seq of all partial results", func(t *testing.T) {
+		assert.Equal(t, []int{1, 3, 6}, slices.Collect(ReductionsWhile(FromValues(1, 2, 3, 4), func(a, c int) (int, bool) {
+			return a + c, a < 5
+		})))
+	})
+}
+
+func TestReductionsWhile2(t *testing.T) {
+	t.Run("should return empty seq for empty seq", func(t *testing.T) {
+		assert.Empty(t, collect2(ReductionsWhile2(Empty2[int, string], func(ri int, rs string, i int, s string) (int, string, bool) {
+			return ri + i, rs + s, true
+		})))
+	})
+	t.Run("should return seq of all partial results", func(t *testing.T) {
+		assert.Equal(t, pairs[int, string]{{1, "a"}, {3, "ab"}, {6, "abc"}}, collect2(ReductionsWhile2(
+			pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}, {4, "d"}}.All,
+			func(ai int, as string, ci int, cs string) (int, string, bool) {
+				return ai + ci, as + cs, ai < 5
+			},
+		)))
+	})
+}
+
 func TestRepeat(t *testing.T) {
 	assert.Equal(t, []int{1, 1, 1, 1}, slices.Collect(Take(Repeat(1), 4)))
 }
@@ -1008,80 +1562,12 @@ func TestRepeat2(t *testing.T) {
 		collect2(Take2(Repeat2(1, "a"), 4)))
 }
 
-func TestSkip(t *testing.T) {
-	t.Run("empty seq", func(t *testing.T) {
-		assert.Empty(t, slices.Collect(Skip(Empty[int], 0)))
-	})
-	t.Run("non-empty seq, skip all", func(t *testing.T) {
-		assert.Empty(t, slices.Collect(Skip(FromValues(1, 2, 3), 4)))
-	})
-	t.Run("non-empty seq", func(t *testing.T) {
-		assert.Equal(t, []int{3}, slices.Collect(Skip(FromValues(1, 2, 3), 2)))
-	})
-	t.Run("non-empty seq, skip none", func(t *testing.T) {
-		assert.Equal(t, []int{1, 2, 3}, slices.Collect(Skip(FromValues(1, 2, 3), 0)))
-	})
-	t.Run("break early", func(t *testing.T) {
-		assert.Equal(t, []int{2}, slices.Collect(Take(Skip(FromValues(1, 2, 3), 1), 1)))
-	})
+func TestSingleton(t *testing.T) {
+	assert.Equal(t, []int{42}, slices.Collect(Singleton(42)))
 }
 
-func TestSkip2(t *testing.T) {
-	t.Run("empty seq", func(t *testing.T) {
-		assert.Empty(t, collect2(Skip2(Empty2[int, string], 0)))
-	})
-	t.Run("non-empty seq, skip all", func(t *testing.T) {
-		assert.Empty(t, collect2(Skip2(pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}}.All, 4)))
-	})
-	t.Run("non-empty seq", func(t *testing.T) {
-		assert.Equal(t, pairs[int, string]{{3, "c"}}, collect2(Skip2(pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}}.All, 2)))
-	})
-	t.Run("non-empty seq, skip none", func(t *testing.T) {
-		assert.Equal(t, pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}},
-			collect2(Skip2(pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}}.All, 0)))
-	})
-	t.Run("break early", func(t *testing.T) {
-		assert.Equal(t, pairs[int, string]{{2, "b"}},
-			collect2(Take2(Skip2(pairs[int, string]{{1, "a"}, {2, "b"}, {3, "c"}}.All, 1), 1)))
-	})
-}
-
-func TestSkipWhile(t *testing.T) {
-	t.Run("should return empty seq for empty seq", func(t *testing.T) {
-		assert.Empty(t, slices.Collect(SkipWhile(Empty[int], func(int) bool { return false })))
-	})
-	t.Run("should return empty seq for const true pred", func(t *testing.T) {
-		assert.Empty(t, slices.Collect(SkipWhile(RepeatN(42, 7), func(int) bool { return true })))
-	})
-	t.Run("should return tail of non-empty seq not matching pred", func(t *testing.T) {
-		assert.Equal(t, []int{4, 5}, slices.Collect(SkipWhile(FromValues(1, 2, 3, 4, 5), func(v int) bool { return v < 4 })))
-	})
-	t.Run("break early", func(t *testing.T) {
-		assert.Equal(t, []int{4, 5, 6}, slices.Collect(Take(SkipWhile(Count(1, 1), func(v int) bool { return v < 4 }), 3)))
-	})
-}
-
-func TestSkipWhile2(t *testing.T) {
-	t.Run("should return empty seq for empty seq", func(t *testing.T) {
-		assert.Empty(t, collect2(SkipWhile2(Empty2[int, string], func(int, string) bool { return false })))
-	})
-	t.Run("should return empty seq for const true pred", func(t *testing.T) {
-		assert.Empty(t, collect2(SkipWhile2(RepeatN2(42, "fourty-two", 7), func(int, string) bool { return true })))
-	})
-	t.Run("should return tail of non-empty seq not matching pred", func(t *testing.T) {
-		assert.Equal(t, pairs[int, string]{{3, "ccc"}, {4, "dddd"}, {5, "eeeee"}},
-			collect2(SkipWhile2(
-				UnpackMap(FromValues("a", "bb", "ccc", "dddd", "eeeee"), func(s string) (int, string) { return len(s), s }),
-				func(v int, s string) bool { return v < 4 && len(s) < 3 },
-			)),
-		)
-	})
-	t.Run("break early", func(t *testing.T) {
-		assert.Equal(t, pairs[int, string]{{3, "aaa"}, {4, "aaaa"}}, collect2(Take2(SkipWhile2(
-			UnpackMap(Count("a", "a"), func(s string) (int, string) { return len(s), s }),
-			func(v int, s string) bool { return v < 3 },
-		), 2)))
-	})
+func TestSingleton2(t *testing.T) {
+	assert.Equal(t, pairs[int, string]{{42, "forty-two"}}, collect2(Singleton2(42, "forty-two")))
 }
 
 func TestSum(t *testing.T) {
@@ -1288,10 +1774,7 @@ func id[T any](t T) T {
 
 func collect2[Fst, Snd any](seq Seq2[Fst, Snd]) (pairs pairs[Fst, Snd]) {
 	for fst, snd := range seq {
-		pairs = append(pairs, pair[Fst, Snd]{
-			Fst: fst,
-			Snd: snd,
-		})
+		pairs = append(pairs, internal.PairFrom(fst, snd))
 	}
 	return
 }

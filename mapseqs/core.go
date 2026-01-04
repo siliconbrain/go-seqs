@@ -58,9 +58,9 @@ type MapEntries[
 	Pack Pack
 }
 
-func (mes MapEntries[_, K, V, E, _]) ForEachUntil(yield func(E) bool) {
+func (mes MapEntries[_, K, V, E, _]) ForEachWhile(yield func(E) bool) {
 	for k, v := range mes.Map {
-		if yield(mes.Pack(k, v)) {
+		if !yield(mes.Pack(k, v)) {
 			return
 		}
 	}
@@ -70,8 +70,7 @@ func (mes MapEntries[_, _, _, _, _]) Len() int {
 	return len(mes.Map)
 }
 
-var _ seqs.Seq[any] = (*MapEntries[map[string]any, string, any, any, func(string, any) any])(nil)
-var _ seqs.Lener = (*MapEntries[map[string]any, string, any, any, func(string, any) any])(nil)
+var _ seqs.FiniteSeq[any] = (*MapEntries[map[string]any, string, any, any, func(string, any) any])(nil)
 
 func MapEntryFrom[Key, Value any](key Key, value Value) MapEntry[Key, Value] {
 	return MapEntry[Key, Value]{
@@ -99,12 +98,12 @@ func ToMap[
 }
 
 func ToMapWith[Seq seqs.Seq[Entry], Entry any, Key comparable, Value any, Unpack ~func(Entry) (Key, Value)](seq Seq, unpack Unpack) (m map[Key]Value) {
-	if lener, ok := any(seq).(seqs.Lener); ok {
+	if lener, ok := any(seq).(seqs.FiniteSeq[Entry]); ok {
 		m = make(map[Key]Value, lener.Len())
 	} else {
 		m = make(map[Key]Value)
 	}
-	return seqs.SeededReduce(seq, m, func(m map[Key]Value, entry Entry) map[Key]Value {
+	return seqs.Fold(seq, m, func(m map[Key]Value, entry Entry) map[Key]Value {
 		key, value := unpack(entry)
 		m[key] = value
 		return m

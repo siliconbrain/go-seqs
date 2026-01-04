@@ -1,970 +1,853 @@
 package seqs
 
 import (
-	"iter"
+	"cmp"
+	"errors"
 	"slices"
+
+	"github.com/siliconbrain/go-seqs/internal"
+	int_iter "github.com/siliconbrain/go-seqs/internal/iter"
+	"github.com/siliconbrain/go-seqs/iter"
 )
 
-// Seq defines a minimal interface for a sequence of values
-type Seq[E any] interface {
-	// ForEachUntil calls the specified function for each sequence element until the function returns `true`
-	ForEachUntil(yield func(E) bool)
-}
-
-// Lener is an interface optionally implemented by sequences which have a finite length
-type Lener interface {
-	// Len returns the length of a collection
-	//
-	// This method returns an `int` to be consistent with the `len()` built-in function.
-	Len() int
-}
-
-// FiniteSeq is a Seq that has a finite length
-type FiniteSeq[E any] interface {
-	Seq[E]
-	Lener
-}
-
-// All returns true if the specified predicate returns true for all elements of the specified sequence
+// All returns whether the specified predicate matches all items in the specified sequence.
 //
-// Application to an infinite sequence will block indefinitely.
-func All[S Seq[E], E any](seq S, pred func(E) bool) (res bool) {
-	return And(Map(seq, pred))
+// Application to an infinite sequence might block indefinitely.
+func All[Item any](seq Seq[Item], pred Pred[Item]) bool {
+	return iter.All(ToIter(seq), pred)
 }
 
-// And returns true if all elements of the specified sequence are true, which includes the empty sequence
+// And returns the logical AND of the boolean values in the specified sequence.
+// The evaluation is short-circuiting.
 //
-// Application to an infinite sequence will block indefinitely.
-func And[S Seq[bool]](seq S) bool {
-	res := true
-	ForEachWhile(seq, func(b bool) bool {
-		res = res && bool(b)
-		return res
-	})
-	return res
+// Application to an infinite sequence might block indefinitely.
+func And[SeqOfBool Seq[bool]](seq SeqOfBool) bool {
+	return iter.And(ToIter(seq))
 }
 
-// Any returns true if the specified predicate returns true for any element of the specified sequence
+// Any returns whether the specified predicate matches any items in the specified sequence.
 //
-// Application to an infinite sequence will block indefinitely.
-func Any[S Seq[E], E any](seq S, pred func(E) bool) (res bool) {
-	return Or(Map(seq, pred))
+// Application to an infinite sequence might block indefinitely.
+func Any[Item any](seq Seq[Item], pred Pred[Item]) bool {
+	return iter.Any(ToIter(seq), pred)
 }
 
-// AppendTo appends elements from the specified sequence to the slice(ish)
-func AppendTo[S Seq[E], E any, Es ~[]E](seq S, slice Es) Es {
-	if lener, ok := asLener(seq); ok {
-		slice = slices.Grow(slice, lener.Len())
+// AppendToSlice appends items from the specified sequence to the specified slice(ish).
+//
+// If the sequence is known to be infinite, the function panics.
+// If the sequence has a known length, the slice is grown to have enough space before appending.
+func AppendToSlice[SeqOfItem Seq[Item], Slice ~[]Item, Item any](seq SeqOfItem, slice Slice) Slice {
+	if IsInfinite(seq) {
+		panic(errors.New("infinitely many items cannot be appended to slice"))
 	}
-	ForEach(seq, func(e E) {
-		slice = append(slice, e)
-	})
-	return slice
+	if len, hasLen := getLength(seq); hasLen {
+		slice = slices.Grow(slice, len)
+	}
+	return slices.AppendSeq(slice, ToIter(seq))
+}
+
+// AsFiniteSeq tries to type cast the specified sequence as a finite sequence.
+func AsFiniteSeq[SeqOfItem Seq[Item], Item any](seq SeqOfItem) (FiniteSeq[Item], bool) {
+	finite, ok := any(seq).(FiniteSeq[Item])
+	return finite, ok
 }
 
 // AsSeq type casts a concrete sequence as a generic sequence
-func AsSeq[S Seq[E], E any](seq S) Seq[E] {
+func AsSeq[SeqOfItem Seq[Item], Item any](seq SeqOfItem) Seq[Item] {
 	return seq
 }
 
-// Cartesian returns a sequence of applying the combinator function to all ordered pairs of the specified sequences' elements.
-func Cartesian[SeqA Seq[A], SeqB Seq[B], A, B, Result any](seqA SeqA, seqB SeqB, combine func(A, B) Result) Seq[Result] {
-	res := Flatten(Map(seqA, func(a A) Seq[Result] {
-		return Map(seqB, func(b B) Result {
-			return combine(a, b)
+// CanDiverge returns true when the specified sequence is marked as possibly divergent, i.e. it might be impossible to terminate its enumeration.
+//
+// For example, calling [Filter] on a (known-to-be) infinite sequence always returns a possibly divergent sequence
+// since [Filter] might need to look at an infinite number of items before it can yield one that matches its predicate.
+func CanDiverge[SeqOfItem Seq[Item], Item any](seq SeqOfItem) bool {
+	_, canDiverge := any(seq).(interface{ CanDiverge() })
+	return canDiverge
+}
+
+// Cartesian returns a sequence of pairs where each pair is a member of the cartesian product of
+// (i.e. all combinations of items from) the two specified sequences.
+func Cartesian[ItemIn1, ItemIn2, ItemOut any](seq1 Seq[ItemIn1], seq2 Seq[ItemIn2], combine func(ItemIn1, ItemIn2) ItemOut) Seq[ItemOut] {
+	res := FromIter(iter.PackMap(iter.Cartesian(ToIter(seq1), ToIter(seq2)), combine))
+
+	finiteSeq1, isFiniteSeq1 := AsFiniteSeq(seq1)
+	finiteSeq2, isFiniteSeq2 := AsFiniteSeq(seq2)
+	if isFiniteSeq1 && isFiniteSeq2 {
+		res = makeFinite(res, func() int {
+			return finiteSeq1.Len() * finiteSeq2.Len()
 		})
-	}))
-	lenerA, isLenerA := asLener(seqA)
-	lenerB, isLenerB := asLener(seqB)
-	if isLenerA && isLenerB {
-		res = withLenFunc(res, func() int {
-			return lenerA.Len() * lenerB.Len()
-		})
+	} else if IsInfinite(seq1) || IsInfinite(seq2) {
+		res = markInfinite(res)
 	}
 	return res
 }
 
-// Concat returns a sequence that is the concatenation of the specified sequences
-func Concat[E any](seqs ...Seq[E]) Seq[E] {
-	switch len(seqs) {
-	case 0:
-		return Empty[E]()
-	case 1:
-		return seqs[0]
-	default:
-		res := SeqFunc(func(yield func(E) bool) {
-			brk := false
-			for _, seq := range seqs {
-				seq.ForEachUntil(func(e E) bool {
-					brk = yield(e)
-					return brk
-				})
-				if brk {
-					return
-				}
-			}
-		})
-		if areLeners(seqs...) {
-			res = withLenFunc(res, func() (l int) {
-				for _, seq := range seqs {
-					l += seq.(Lener).Len()
-				}
-				return
-			})
-		}
-		return res
-	}
+// Concat returns a sequence of items that is the concatenation of items from the specified sequences.
+func Concat[Item any](seqs ...Seq[Item]) Seq[Item] {
+	return concat(wrapSeqSlice(seqs))
 }
 
 // Count returns a sequence of repeatedly adding step to the previous value, starting with from.
 func Count[Item Summable](from Item, step Item) Seq[Item] {
-	return SeededReductions(Repeat(step), from, add)
+	// NOTE: Even though none of the summable types are infinite, the sequence will be. Overflows or OOM don't change that.
+	return markInfinite(FromIter(iter.Count(from, step)))
 }
 
-// Cycle returns an (almost always) infinite sequence that cyclically repeats the elements of the specified sequence
+// Cycle returns a sequence of items that infinitely (1) repeates the specified sequence.
 //
-// If the specified sequence is empty (or becomes empty at any point) the returned sequence becomes empty to avoid an unbreakable infinite loop.
-func Cycle[S Seq[E], E any](seq S) Seq[E] {
-	return SeqFunc(func(yield func(E) bool) {
-		brk := false
-		for {
-			empty := true
-			seq.ForEachUntil(func(e E) bool {
-				empty = false
-				brk = yield(e)
-				return brk
-			})
-			if brk || empty {
-				return
-			}
-		}
-	})
+// (1): If the specified sequence is empty (or becomes empty at any point) the returned sequence becomes empty to avoid an unbreakable infinite loop.
+func Cycle[SeqOfItem Seq[Item], Item any](seq SeqOfItem) Seq[Item] {
+	if IsInfinite(seq) {
+		// an infinite sequence cannot be repeated
+		return seq
+	}
+	if isEmpty, weKnow := looksEmpty(seq); weKnow && isEmpty {
+		return Empty[Item]()
+	}
+	return FromIter(iter.Cycle(ToIter(seq)))
 }
 
-// Divvy returns a sequence of slices with at most size length containing a continuous range of elements from the specified sequence.
-// The start of each slice will be offset by skip number of elements from the previous one.
-// Slices will overlap when size > skip, and some elements will be dropped when size < skip.
-func Divvy[S Seq[E], E any](seq S, size int, skip int) Seq[[]E] {
-	if size < 1 {
-		panic("size must be positive")
-	}
-	if skip < 1 {
-		panic("skip must be positive")
-	}
-	shift := min(skip, size)
-	ignore := skip - shift
-
-	res := SeqFunc(func(yield func([]E) bool) {
-		buf := make([]E, 0, size)
-		ignoreCnt := 0
-		shouldFlush := false
-		brk := false
-		seq.ForEachUntil(func(e E) bool {
-			if ignoreCnt > 0 {
-				ignoreCnt--
-				return false
-			}
-			buf = append(buf, e)
-			shouldFlush = true
-			if len(buf) == size {
-				if yield(slices.Clone(buf)) {
-					brk = true
-					return true
-				}
-				buf = append(buf[0:0], buf[shift:]...)
-				ignoreCnt = ignore
-				shouldFlush = false
-			}
-			return false
-		})
-		if shouldFlush && !brk {
-			_ = yield(buf)
-		}
-	})
-	if lener, ok := asLener(seq); ok {
-		res = withLenFunc(res, func() int {
-			l := lener.Len()
+// Divvy returns a sequence of slices with at most size length containing a continuous range of items from the specified sequence.
+// The start of each slice will be offset by skip number of items from the previous one.
+// Slices will overlap when size > skip, and some items will be dropped when size < skip.
+func Divvy[Item any](seq Seq[Item], size int, skip int) Seq[[]Item] {
+	res := FromIter(iter.Divvy(ToIter(seq), size, skip))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, func() int {
+			l := finiteSeq.Len()
 			return roundUpDiv(min(l, size), size) + roundUpDiv(max(l-size, 0), skip)
 		})
+	} else if IsInfinite(seq) {
+		res = markInfinite(res)
 	}
 	return res
 }
 
-// DivvyExact is like [Divvy] but all slices are exactly size length.
-// Any trailing elements are dropped.
-func DivvyExact[E any](seq Seq[E], size int, skip int) Seq[[]E] {
-	if size < 1 {
-		panic("size must be positive")
-	}
-	if skip < 1 {
-		panic("skip must be positive")
-	}
-	shift := min(skip, size)
-	ignore := skip - shift
-
-	res := SeqFunc(func(yield func([]E) bool) {
-		buf := make([]E, 0, size)
-		ignoreCnt := 0
-		seq.ForEachUntil(func(e E) bool {
-			if ignoreCnt > 0 {
-				ignoreCnt--
-				return false
-			}
-			buf = append(buf, e)
-			if len(buf) == size {
-				if yield(slices.Clone(buf)) {
-					return true
-				}
-				buf = append(buf[0:0], buf[shift:]...)
-				ignoreCnt = ignore
-			}
-			return false
-		})
-	})
-	if lener, ok := asLener(seq); ok {
-		res = withLenFunc(res, func() int {
-			l := lener.Len()
+// DivvyExact is like [Divvy] but all yielded slices are exactly size length.
+// Any trailing items are dropped.
+func DivvyExact[Item any](seq Seq[Item], size int, skip int) Seq[[]Item] {
+	res := FromIter(iter.DivvyExact(ToIter(seq), size, skip))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, func() int {
+			l := finiteSeq.Len()
 			return roundDownDiv(min(l, size), size) + roundDownDiv(max(l-size, 0), skip)
 		})
+	} else if IsInfinite(seq) {
+		res = markInfinite(res)
 	}
 	return res
 }
 
-// Empty returns an empty sequence
-func Empty[E any]() Seq[E] {
-	return emptySeq[E]{}
-}
+// Drop returns a sequence with at most n items dropped from the start of the specified sequence.
+func Drop[Item any](seq Seq[Item], n int) Seq[Item] {
+	if n == 0 {
+		return seq
+	}
 
-func Enumerate[S Seq[E], E any](seq S) Seq[Pair[int, E]] {
-	res := SeqFunc(func(yield func(Pair[int, E]) bool) {
-		idx := -1
-		seq.ForEachUntil(func(e E) bool {
-			idx++
-			return yield(pairOf(idx, e))
-		})
-	})
-	if lener, ok := asLener(seq); ok {
-		res = withLenFunc(res, lener.Len)
+	res := FromIter(iter.Drop(ToIter(seq), n))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, func() int { return max(finiteSeq.Len()-n, 0) })
+	} else if IsInfinite(seq) {
+		res = markInfinite(seq)
 	}
 	return res
 }
 
-// Filter returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `true`
-func Filter[S Seq[E], E any](seq S, pred func(E) bool) Seq[E] {
-	return SeqFunc(func(yield func(E) bool) {
-		seq.ForEachUntil(func(e E) bool {
-			return pred(e) && yield(e)
-		})
-	})
-}
-
-// FilterMap returns a sequence comprised of only values returned by the specified function for which the function also returned `true`
+// DropLast returns the specified sequence of items without its last n items.
+// When the specified sequence has less than n items, the result will be empty.
 //
-// This function is useful when the transformation and the predicate function cannot be easily separated.
-func FilterMap[S Seq[Src], Src, Dst any](seq S, fn func(Src) (Dst, bool)) Seq[Dst] {
-	return SeqFunc(func(yield func(Dst) bool) {
-		seq.ForEachUntil(func(src Src) bool {
-			if dst, ok := fn(src); ok {
-				return yield(dst)
-			}
-			return false
-		})
-	})
+// Uses O(n) space.
+func DropLast[Item any](seq Seq[Item], n int) Seq[Item] {
+	if n < 1 {
+		return seq
+	}
+	if IsInfinite(seq) {
+		// cannot drop the last n items of an infinite sequence
+		return seq
+	}
+	if isEmpty, weKnow := looksEmpty(seq); weKnow && isEmpty {
+		return Empty[Item]()
+	}
+	res := FromIter(iter.DropLast(ToIter(seq), n))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, func() int { return max(finiteSeq.Len()-n, 0) })
+	}
+	return res
 }
 
-// FilterWithIndex returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `true`
-func FilterWithIndex[S Seq[E], E any](seq S, pred func(int, E) bool) Seq[E] {
-	return Map(Filter(Enumerate(seq), func(p Pair[int, E]) bool { return pred(p.Unwrap()) }), second)
+// DropWhile returns the rest of the specified sequence after the prefix of items matching the specified predicate.
+func DropWhile[Item any](seq Seq[Item], pred Pred[Item]) Seq[Item] {
+	return FromIter(iter.DropWhile(ToIter(seq), pred))
 }
 
-// First returns the first element of the specified sequence and true, or the zero value of E and false if the sequence is empty.
-func First[S Seq[E], E any](seq S) (first E, hasFirst bool) {
-	seq.ForEachUntil(func(e E) bool {
-		first, hasFirst = e, true
-		return true
-	})
-	return
+// Empty returns an empty sequence.
+func Empty[Item any]() Seq[Item] {
+	return emptySeq[Item]{}
 }
 
-// Flatten returns a sequence that is the concatenation of sequences contained by the specified sequence
+// Enumerate returns a sequence of pairs where each pair consists of the ordinal of an item from the specified sequence and the item itself.
+func Enumerate[SeqOfItem Seq[Item], Item any](seq SeqOfItem) Seq[Pair[int, Item]] {
+	res := FromIter2(iter.Enumerate(ToIter(seq)), pairFrom)
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, finiteSeq.Len)
+	} else if IsInfinite(seq) {
+		res = markInfinite(res)
+	}
+	return res
+}
+
+// Filter returns a sequence of items that only contains items of the specified sequence that match the specified predicate.
+func Filter[Item any](seq Seq[Item], pred Pred[Item]) Seq[Item] {
+	res := FromIter(iter.Filter(ToIter(seq), pred))
+	if IsInfinite(seq) {
+		res = struct {
+			Seq[Item]
+			canDivergeMark
+			infiniteMark
+		}{Seq: res}
+	}
+	return res
+}
+
+// FilterMap returns a sequence that only contains transformed items of the specified sequence where the specified function returned true.
+func FilterMap[ItemIn, ItemOut any](seq Seq[ItemIn], mapFn func(ItemIn) (ItemOut, bool)) Seq[ItemOut] {
+	res := FromIter(iter.FilterMap(ToIter(seq), mapFn))
+	if IsInfinite(seq) {
+		res = struct {
+			Seq[ItemOut]
+			canDivergeMark
+			infiniteMark
+		}{Seq: res}
+	}
+	return res
+}
+
+// Filter returns a sequence of items that only contains items of the specified sequence that match the specified predicate.
+// The predicate also receives the ordinal of the item.
+func FilterWithIndex[Item any](seq Seq[Item], pred func(int, Item) bool) Seq[Item] {
+	res := Map(Filter(Enumerate(seq), func(p Pair[int, Item]) bool { return pred(p.Unpack()) }), second)
+	if IsInfinite(seq) {
+		res = struct {
+			Seq[Item]
+			canDivergeMark
+			infiniteMark
+		}{Seq: res}
+	}
+	return res
+}
+
+// First returns the first item of the specified sequence and true, or the zero value for Item and false if the sequence is empty.
+func First[SeqOfItem Seq[Item], Item any](seq SeqOfItem) (first Item, hasFirst bool) {
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		return firstOfFiniteSeq(finiteSeq)
+	}
+	return iter.First(ToIter(seq))
+}
+
+// Flatten returns the concatenation of sequences yielded by the specified sequence.
+func Flatten[Seqs Seq[SeqOfItem], SeqOfItem Seq[Item], Item any](seqs Seqs) Seq[Item] {
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seqs); isFiniteSeq {
+		return concat(finiteSeq)
+	}
+	res := FromIter(iter.Flatten(iter.Map(ToIter(seqs), ToIter)))
+	if IsInfinite(seqs) {
+		res = struct {
+			Seq[Item]
+			infiniteMark
+			canDivergeMark
+		}{Seq: res}
+	}
+	return res
+}
+
+// Fold returns the result of successively applying the specified combining function
+// to items from the specified sequence, starting with the seed value.
+// When the sequence is empty, the result will be the seed value.
 //
-// The returned sequence never implements the Lener interface. Use Concat with ToSlice if you want the resulting sequence to implement Lener when possible.
-func Flatten[SS Seq[S], S Seq[E], E any](seq SS) Seq[E] {
-	// NOTE: We could support Lener by checking if all subsequences implement Lener (like with Concat),
-	//       but looping through the super sequence might incur a nontrivial performance hit.
-	return SeqFunc(func(yield func(E) bool) {
-		brk := false
-		seq.ForEachUntil(func(s S) bool {
-			s.ForEachUntil(func(e E) bool {
-				brk = yield(e)
-				return brk
-			})
-			return brk
-		})
-	})
+// Application to a known-to-be-infinite sequence will panic.
+// Application to any other infinite sequence will block indefinitely.
+func Fold[Item, Result any](seq Seq[Item], seed Result, combine func(Result, Item) Result) Result {
+	if IsInfinite(seq) {
+		panic(errors.New("infinite sequence cannot be folded"))
+	}
+	return iter.Fold(ToIter(seq), seed, combine)
 }
 
-// ForEach calls the specified function for each element of the specified sequence
+// Folds returns a sequence of partial results of successively applying the specified combining function
+// to items from the specified sequence, starting with the seed value.
+func Folds[ItemIn, ItemOut any](seq Seq[ItemIn], seed ItemOut, combine func(ItemOut, ItemIn) ItemOut) Seq[ItemOut] {
+	res := FromIter(iter.Folds(ToIter(seq), seed, combine))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, func() int { return 1 + finiteSeq.Len() })
+	} else if IsInfinite(seq) {
+		res = markInfinite(res)
+	}
+	return res
+}
+
+// FoldsWhile returns a sequence of partial results of successively applying the specified combining function
+// to items from the specified sequence while its second return value is true, starting with the seed value.
 //
-// Application to an infinite sequence will block indefinitely.
-func ForEach[S Seq[E], E any](seq S, yield func(E)) {
-	seq.ForEachUntil(func(e E) bool {
-		yield(e)
-		return false
-	})
+// TL;DR: it's [Folds] with early return.
+func FoldsWhile[ItemIn, ItemOut any](seq Seq[ItemIn], seed ItemOut, combine func(ItemOut, ItemIn) (ItemOut, bool)) Seq[ItemOut] {
+	return FromIter(iter.FoldsWhile(ToIter(seq), seed, combine))
 }
 
-// ForEachUntilWithIndex calls the specified function for each element of the specified sequence along with its index until the function returns `true`
-func ForEachUntilWithIndex[S Seq[E], E any](seq S, yield func(int, E) bool) {
-	Enumerate(seq).ForEachUntil(func(p Pair[int, E]) bool { return yield(p.Unwrap()) })
+// FoldWhile returns the result of successively applying the specified combining function
+// to items from the specified sequence while its second return value is true, starting with the seed value.
+// When the sequence is empty, the result will be the seed value.
+//
+// TL;DR: it's [Fold] with early return.
+func FoldWhile[Item, Result any](seq Seq[Item], seed Result, combine func(Result, Item) (Result, bool)) Result {
+	return iter.FoldWhile(ToIter(seq), seed, combine)
 }
 
-// ForEachWithIndex calls the specified function for each element of the specified sequence along with its index
-func ForEachWithIndex[S Seq[E], E any](seq S, yield func(int, E)) {
-	ForEach(Enumerate(seq), func(p Pair[int, E]) { yield(p.Unwrap()) })
+// FromIter returns a sequence from the specified [iter.Seq].
+func FromIter[Item any](seq iter.Seq[Item]) Seq[Item] {
+	return seqFunc[Item](seq)
 }
 
-// ForEachWhile calls the specified function for each element of the specified sequence while the function returns `true`
-func ForEachWhile[S Seq[E], E any](seq S, yield func(E) bool) {
-	seq.ForEachUntil(func(e E) bool {
-		return !yield(e)
-	})
+// FromIter2 returns a sequence from the specified [iter.Seq2].
+func FromIter2[ItemIn1, ItemIn2, ItemOut any](seq iter.Seq2[ItemIn1, ItemIn2], pack func(ItemIn1, ItemIn2) ItemOut) Seq[ItemOut] {
+	return FromIter(iter.PackMap(seq, pack))
 }
 
-// ForEachWhileWithIndex calls the specified function for each element of the specified sequence along with its index while the function returns `true`
-func ForEachWhileWithIndex[S Seq[E], E any](seq S, yield func(int, E) bool) {
-	ForEachWhile(Enumerate(seq), func(p Pair[int, E]) bool { return yield(p.Unwrap()) })
-}
-
-// FromIter returns a sequence from the specified [iter.Seq] (or equivalent function)
-func FromIter[IterSeq ~func(yield func(E) bool), E any](iterSeq IterSeq) Seq[E] {
-	return SeqFunc(func(yield func(E) bool) {
-		iterSeq(func(value E) bool {
-			return !yield(value)
-		})
-	})
-}
-
-// FromIter2 returns a sequence from the specified [iter.Seq2] (or equivalent function)
-func FromIter2[IterSeq2 ~func(yield func(K, V) bool), K, V, E any](iterSeq2 IterSeq2, pack func(K, V) E) Seq[E] {
-	return SeqFunc(func(yield func(E) bool) {
-		iterSeq2(func(k K, v V) bool {
-			return !yield(pack(k, v))
-		})
-	})
-}
-
-// FromValue returns a singleton sequence containing the specified value
-func FromValue[E any](value E) Seq[E] {
-	return singleton[E]{value: value}
-}
-
-// FromValues returns a sequence made up of the specified values
-func FromValues[E any](values ...E) Seq[E] {
+// FromValues returns a sequence made up of the specified values.
+func FromValues[Item any](values ...Item) Seq[Item] {
 	return FromSlice(values)
 }
 
-// FromSlice returns a sequence whose elemets are (copies of) the specified slice's elements
-func FromSlice[Es ~[]E, E any](s Es) Seq[E] {
-	return sliceSeq[E](s)
+// FromSlice returns a sequence whose items are (copies of) the specified slice's values.
+func FromSlice[Slice ~[]Item, Item any](slice Slice) Seq[Item] {
+	return sliceSeq[Item](slice)
 }
 
-// FromSlicePtrs returns a sequence whose elements are pointers to the specified slice's elements
-func FromSlicePtrs[Es ~[]E, E any](s Es) Seq[*E] {
-	return slicePtrsSeq[E](s)
+// FromSlicePtrs returns a sequence whose items are pointers to the specified slice's values.
+func FromSlicePtrs[Slice ~[]Item, Item any](slice Slice) Seq[*Item] {
+	return slicePtrsSeq[Item](slice)
 }
 
-// Generate returns a sequence whose elements are generated by calling the provided function
-func Generate[E any](gen func() E) Seq[E] {
-	return SeqFunc(func(yield func(E) bool) {
-		for !yield(gen()) {
-		}
-	})
+// Generate returns a sequence of items obtained by calling the specified function repeatedly.
+func Generate[Item any](next func() Item) Seq[Item] {
+	return markInfinite(FromIter(iter.Generate(next)))
 }
 
-// GenerateWithIndex returns a sequence whose elements are generated by calling the provided function with the current index
-func GenerateWithIndex[E any](gen func(idx int) E) Seq[E] {
-	return SeqFunc(func(yield func(E) bool) {
-		for i := 0; !yield(gen(i)); i++ {
-		}
-	})
+// Generate returns a sequence of items obtained by calling the specified function repeatedly until it returns false.
+func GenerateWhile[Item any](next func() (Item, bool)) Seq[Item] {
+	return FromIter(iter.GenerateWhile(next))
 }
 
-// Intersperse returns a sequence whose elements are the same as the specified sequence's but interspersed with the specified value
-func Intersperse[S Seq[E], E any](seq S, val E) Seq[E] {
-	res := SeqFunc(func(yield func(E) bool) {
-		first := true
-		seq.ForEachUntil(func(e E) bool {
-			if !first {
-				if yield(val) {
-					return true
+// Inspect returns a sequence whose items are the same as the specified sequence's
+// but are passed to the specified function before being yielded.
+func Inspect[Item any](seq Seq[Item], observe func(Item)) Seq[Item] {
+	res := FromIter(iter.Inspect(ToIter(seq), observe))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, finiteSeq.Len)
+	} else if IsInfinite(seq) {
+		res = markInfinite(res)
+	}
+	return res
+}
+
+// Interleave returns a sequence of items obtained by cycling between the specified sequences for each item.
+// When any of the input sequences is exhausted the sequence ends.
+func Interleave[Item any](seqs ...Seq[Item]) Seq[Item] {
+	res := FromIter(int_iter.Interleave(wrapSeqSlice(seqs)))
+	if lengths, ok := getLengths(wrapSeqSlice(seqs)); ok {
+		res = makeFinite(res, func() int {
+			/*
+				       ○
+				     ● ●   ○
+				 ↑   ● ● ● ● ●		(yielded: ●, unyielded: ○)
+				     ● ● ● ● ●
+				     ● ● ● ● ●
+				seq  0 1 2 3 4
+				         ↑
+						min
+
+				min len: 3
+				min idx: 2
+				    len: 5 * 3 + 2 = 17
+			*/
+			minIdx, minLen := iter.Reduce2(iter.Enumerate(lengths), func(minIdx int, minLen int, idx int, len int) (int, int) {
+				if len < minLen {
+					return idx, len
 				}
-			} else {
-				first = false
-			}
-			return yield(e)
+				return minIdx, minLen
+			})
+			return len(seqs)*minLen + minIdx
 		})
-	})
-	if lener, ok := asLener(seq); ok {
-		res = withLenFunc(res, func() int { return max(lener.Len()*2-1, 0) })
 	}
 	return res
 }
 
-// IsEmpty returns true if the specified sequence has no elements; otherwise, it returns false.
-func IsEmpty[S Seq[E], E any](seq S) bool {
-	if lener, ok := asLener(seq); ok {
-		return lener.Len() == 0
-	}
-	_, hasFirst := First(seq)
-	return !hasFirst
-}
-
-// Last returns the last element of the specified sequence and true, or the zero value of E and false if the sequence is empty.
-//
-// Application to an infinite sequence will block indefinitely.
-func Last[S Seq[E], E any](seq S) (last E, hasLast bool) {
-	ForEach(seq, func(e E) {
-		last, hasLast = e, true
-	})
-	return
-}
-
-// Len returns the number of elements in the specified sequence.
-//
-// Application to an infinite sequence will block indefinitely.
-func Len[S Seq[E], E any](seq S) int {
-	if seq, ok := Seq[E](seq).(Lener); ok {
-		return seq.Len()
-	}
-	return Sum(Map(seq, func(E) int { return 1 }))
-}
-
-// Map returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence
-func Map[S Seq[Src], Src any, Dst any](seq S, mapfn func(Src) Dst) Seq[Dst] {
-	res := SeqFunc(func(yield func(Dst) bool) {
-		seq.ForEachUntil(func(src Src) bool {
-			return yield(mapfn(src))
-		})
-	})
-
-	if lener, ok := asLener(seq); ok {
-		res = withLenFunc(res, lener.Len) // same length as seq
+// Intersperse returns a sequence of items where separators are inserted between items from the specified sequence.
+func Intersperse[Item any](seq Seq[Item], sep Item) Seq[Item] {
+	res := FromIter(iter.Intersperse(ToIter(seq), sep))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, func() int { return max(finiteSeq.Len()*2-1, 0) })
+	} else if IsInfinite(seq) {
+		res = markInfinite(res)
 	}
 	return res
 }
 
-// MapWithIndex returns a sequence whose elements are obtained by applying the specified mapping function to elements of the specified sequence along with their indices
-func MapWithIndex[S Seq[Src], Src any, Dst any](seq S, mapfn func(int, Src) Dst) Seq[Dst] {
-	return Map(Enumerate(seq), func(p Pair[int, Src]) Dst { return mapfn(p.Unwrap()) })
+// IsEmpty returns whether the specified sequence has no items.
+func IsEmpty[SeqOfItem Seq[Item], Item any](seq SeqOfItem) bool {
+	if isEmpty, weKnow := looksEmpty(seq); weKnow {
+		return isEmpty
+	}
+	return iter.IsEmpty(ToIter(seq))
 }
 
-// Or returns true if any element of the specified sequence is true, which does not include the empty sequence
-//
-// Application to an infinite sequence will block indefinitely.
-func Or[S Seq[bool]](seq S) bool {
-	res := false
-	seq.ForEachUntil(func(b bool) bool {
-		res = res || b
-		return res
-	})
-	return res
+// IsFinite returns whether the specified sequence is known to have a finite number of items.
+func IsFinite[SeqOfItem Seq[Item], Item any](seq SeqOfItem) bool {
+	_, isFinite := AsFiniteSeq(seq)
+	return isFinite
 }
 
-// PartialSums returns a sequence of the partial sums of the specified sequence.
-func PartialSums[S Seq[E], E Summable](seq S) Seq[E] {
-	return Reductions(seq, add)
+// IsInfinite returns whether the specified sequence is known to be infinite.
+func IsInfinite[SeqOfItem Seq[Item], Item any](seq SeqOfItem) bool {
+	_, isInfinite := any(seq).(interface{ Infinite() })
+	return isInfinite
 }
 
-// Reduce returns a value obtained by aggregating elements of the specified sequence using the specified operation.
+// Last returns the last item of the specified sequence if it exists.
 //
-// If the specified sequence is empty, the zero value of E will be returned.
-// If the specified sequence has a single element only, that element will be returned.
-//
-// Application to an infinite sequence will block indefinitely.
-func Reduce[S Seq[E], E any](seq S, op func(E, E) E) (res E) {
-	first := true
-	ForEach(seq, func(e E) {
-		if first {
-			first = false
-			res = e
-		} else {
-			res = op(res, e)
+// Known-to-be-infinite sequences are considered not to have a last item.
+// Application to any other infinite sequence will block indefinitely.
+func Last[SeqOfItem Seq[Item], Item any](seq SeqOfItem) (last Item, hasLast bool) {
+	if IsInfinite(seq) {
+		return
+	}
+	if len, hasLen := getLength(seq); hasLen {
+		if len < 1 {
+			return
 		}
-	})
-	return
+		if indexable, isIndexable := asIndexable(seq); isIndexable {
+			return indexable.Index(len - 1), true
+		}
+	}
+	return iter.Last(ToIter(seq))
 }
 
-// Reductions returns the sequence of intermediate values of the reduction of the specified sequence with the specified operation.
+// Len returns the length of the specified sequence.
 //
-// If the specified sequence is empty, the returned sequence will be empty.
-// If the specified sequence has a single element only, a sequence containing only that element will be returned.
-func Reductions[S Seq[E], E any](seq S, op func(E, E) E) Seq[E] {
-	res := SeqFunc(func(yield func(E) bool) {
-		var acc E
-		first := true
-		seq.ForEachUntil(func(e E) bool {
-			if first {
-				first = false
-				acc = e
-			} else {
-				acc = op(acc, e)
-			}
-			return yield(acc)
-		})
-	})
+// Application to a known-to-be-infinite sequence will panic.
+// Application to any other infinite sequence will block indefinitely.
+func Len[SeqOfItem Seq[Item], Item any](seq SeqOfItem) int {
+	if IsInfinite(seq) {
+		panic(errors.New("length of infinite sequence cannot be calculated"))
+	}
+	if len, hasLen := getLength(seq); hasLen {
+		return len
+	}
+	return iter.Len(ToIter(seq))
+}
 
-	if lener, ok := asLener(seq); ok {
-		res = withLenFunc(res, lener.Len) // same length as seq
+// Map returns a sequence of items obtained by transforming each item of the specified sequence using the specified function.
+func Map[ItemIn, ItemOut any](seq Seq[ItemIn], mapFn func(ItemIn) ItemOut) Seq[ItemOut] {
+	res := FromIter(iter.Map(ToIter(seq), mapFn))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, finiteSeq.Len)
+	} else if IsInfinite(seq) {
+		res = markInfinite(res)
 	}
 	return res
 }
 
-// Reject returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `false`
-func Reject[S Seq[E], E any](seq S, pred func(E) bool) Seq[E] {
-	return Filter(seq, func(e E) bool { return !pred(e) })
+// Map returns a sequence of items obtained by transforming each item of the specified sequence using the specified function.
+// The mapping function also receives the ordinal of the item.
+func MapWithIndex[ItemIn, ItemOut any](seq Seq[ItemIn], mapFn func(int, ItemIn) ItemOut) Seq[ItemOut] {
+	res := FromIter(iter.PackMap(iter.Enumerate(ToIter(seq)), mapFn))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, finiteSeq.Len)
+	} else if IsInfinite(seq) {
+		res = markInfinite(res)
+	}
+	return res
 }
 
-// RejectWithIndex returns a sequence that only contains elements of the specified sequence for which the specified predicate returns `false`
-func RejectWithIndex[S Seq[E], E any](seq S, pred func(int, E) bool) Seq[E] {
-	return Map(Reject(Enumerate(seq), func(p Pair[int, E]) bool { return pred(p.Unwrap()) }), second)
+// Max returns the largest item in the specified sequence.
+// It returns the zero value for Item when the sequence is empty.
+//
+// Application to a known-to-be-infinite sequence will panic.
+// Application to any other infinite sequence will block indefinitely.
+func Max[SeqOfItem Seq[Item], Item cmp.Ordered](seq SeqOfItem) Item {
+	if IsInfinite(seq) {
+		panic(errors.New("maximum of infinite sequence cannot be calculated"))
+	}
+	return iter.Max(ToIter(seq))
+}
+
+// Memoize returns a sequence of items that yields memoized items from the specified underlying sequence.
+// Each item of the specified sequence will only be forced at most once.
+func Memoize[SeqOfItem Seq[Item], Item any](seq SeqOfItem) Seq[Item] {
+	// NOTE: We could possibly give a hint to Memoize for how much storage to allocate based on the length of seq but that might turn out to be wasteful when the sequence is only partially enumerated.
+	//       Might be worth defining something like MemoizePrealloc though (or add it as an optional param).
+	res := FromIter(iter.Memoize(ToIter(seq)))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, finiteSeq.Len)
+	} else if IsInfinite(seq) {
+		res = markInfinite(res)
+	}
+	return res
+}
+
+// Min returns the smallest item in the specified sequence.
+// It returns the zero value for Item when the sequence is empty.
+//
+// Application to a known-to-be-infinite sequence will panic.
+// Application to any other infinite sequence will block indefinitely.
+func Min[SeqOfItem Seq[Item], Item cmp.Ordered](seq SeqOfItem) Item {
+	if IsInfinite(seq) {
+		panic(errors.New("minimum of infinite sequence cannot be calculated"))
+	}
+	return iter.Min(ToIter(seq))
+}
+
+// Or returns the logical OR of the boolean values in the specified sequence.
+// The evaluation is short-circuiting.
+//
+// Application to an infinite sequence might block indefinitely.
+func Or[SeqOfBool Seq[bool]](seq SeqOfBool) bool {
+	return iter.Or(ToIter(seq))
+}
+
+// Panic returns a sequence of items that panics with the specified reason when enumerated.
+func Panic[Item any](reason any) Seq[Item] {
+	return FromIter(iter.Panic[Item](reason))
+}
+
+// Reduce returns the result of successively applying the specified combining function to items from the specified sequence.
+// When the sequence is empty, the result will be the zero value for Item.
+// When the sequence has a single item, that item will be the result.
+//
+// Application to a known-to-be-infinite sequence will panic.
+// Application to any other infinite sequence will block indefinitely.
+func Reduce[Item any](seq Seq[Item], combine func(Item, Item) Item) Item {
+	if IsInfinite(seq) {
+		panic(errors.New("infinite sequence cannot be reduced"))
+	}
+	return iter.Reduce(ToIter(seq), combine)
+}
+
+// Reductions returns a sequence of partial results of successively applying the specified combining function to items from the specified sequence.
+// The first item of the returned sequence will be the first item of the specified sequence.
+// When the specified sequence is empty, the returned sequence will be empty.
+func Reductions[Item any](seq Seq[Item], combine func(Item, Item) Item) Seq[Item] {
+	res := FromIter(iter.Reductions(ToIter(seq), combine))
+
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, finiteSeq.Len) // same length as seq
+	} else if IsInfinite(seq) {
+		res = markInfinite(res)
+	}
+	return res
+}
+
+// ReduceWhile returns the result of successively applying the specified combining function
+// to items from the specified sequence while its second return value is true.
+// When the sequence is empty, the result will be the zero value for Item.
+// When the sequence has a single item, that item will be the result.
+//
+// TL;DR: it's [Reduce] with early return.
+func ReduceWhile[Item any](seq Seq[Item], combine func(Item, Item) (Item, bool)) Item {
+	return iter.ReduceWhile(ToIter(seq), combine)
+}
+
+// ReductionsWhile returns a sequence of partial results of successively applying the specified combining function
+// to items from the specified sequence while its second return value is true.
+// The first item of the returned sequence will be the first item of the specified sequence.
+// When the specified sequence is empty, the returned sequence will be empty.
+//
+// TL;DR: it's [Reductions] with early return.
+func ReductionsWhile[Item any](seq Seq[Item], combine func(Item, Item) (Item, bool)) Seq[Item] {
+	return FromIter(iter.ReductionsWhile(ToIter(seq), combine))
 }
 
 // Repeat returns an infinite sequence that repeats the specified value
-func Repeat[E any](e E) Seq[E] {
-	return SeqFunc(func(yield func(E) bool) {
-		for {
-			if yield(e) {
-				return
-			}
-		}
-	})
+func Repeat[Item any](item Item) Seq[Item] {
+	return markInfinite(FromIter(iter.Repeat(item)))
 }
 
 // Repeat returns a finite sequence that repeats the specified value `n` times
-func RepeatN[E any](e E, n int) Seq[E] {
-	// NOTE: cannot implement as Take(Repeat(e), n) because Take is (currently) unable to detect that its sequence is infinite an thus provide a correct length
-	return withLenFunc(
-		SeqFunc(func(yield func(E) bool) {
-			for range n {
-				if yield(e) {
-					return
-				}
-			}
-		}),
+func RepeatN[Item any](item Item, n int) Seq[Item] {
+	return makeFinite(
+		FromIter(iter.RepeatN(item, n)),
 		func() int { return n },
 	)
 }
 
-// RoundRobin returns a sequence whose elements are obtained by alternately taking elements from the specified sequences in a round-robin fashion
-func RoundRobin[E any](seqs ...Seq[E]) Seq[E] {
-	switch len(seqs) {
-	case 0:
-		return Empty[E]()
-	case 1:
-		return seqs[0]
+// Singleton returns a singleton sequence containing the specified item.
+func Singleton[Item any](item Item) Seq[Item] {
+	return singleton[Item]{item: item}
+}
+
+// Sum returns the sum of items in the specified sequence.
+//
+// Application to a known-to-be-infinite sequence will panic.
+// Application to any other infinite sequence will block indefinitely.
+func Sum[SeqOfItem Seq[Item], Item Summable](seq SeqOfItem) Item {
+	if IsInfinite(seq) {
+		panic(errors.New("infinite sequence cannot be summed"))
 	}
+	return iter.Sum(ToIter(seq))
+}
 
-	res := SeqFunc(func(yield func(E) bool) {
-		nextChs := make([]chan E, len(seqs))
-		moveNextChs := make([]chan struct{}, len(seqs))
-
-		for i := range seqs {
-			nextChs[i] = make(chan E)
-			moveNextChs[i] = make(chan struct{})
-
-			defer close(moveNextChs[i])
-
-			go iterate(seqs[i], nextChs[i], moveNextChs[i])
-		}
-
-		live := len(seqs)
-		for idx := 0; live > 0; idx = (idx + 1) % len(seqs) {
-			nextCh := nextChs[idx]
-			if nextCh == nil {
-				continue
-			}
-			moveNextChs[idx] <- struct{}{}
-			next, hasNext := <-nextCh
-			if !hasNext {
-				nextChs[idx] = nil
-				live--
-				continue
-			}
-			if yield(next) {
-				return
-			}
-		}
-	})
-	if areLeners(seqs...) {
-		res = withLenFunc(res, func() (l int) {
-			for _, seq := range seqs {
-				l += seq.(Lener).Len()
-			}
-			return
-		})
+// Sums returns a sequence of partial sums of items in the specified sequence.
+func Sums[SeqOfItem Seq[Item], Item Summable](seq SeqOfItem) Seq[Item] {
+	res := FromIter(iter.Sums(ToIter(seq)))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, finiteSeq.Len)
+	} else if IsInfinite(seq) {
+		res = markInfinite(res)
 	}
 	return res
 }
 
-// SeededReduce returns a value obtained by applying the specified function to an accumlator value (initialized to the specified seed value) and successive elements of the sequence
-//
-// Application to an infinite sequence will block indefinitely.
-func SeededReduce[S Seq[E], E any, A any](seq S, seed A, op func(A, E) A) (res A) {
-	res = seed
-	ForEach(seq, func(e E) {
-		res = op(res, e)
-	})
-	return
-}
-
-// SeededReductions returns the sequence of intermediate values of the reduction of the specified sequence by the specified operation starting with the specified seed value.
-//
-// The returned sequence always has the seed value as its first element.
-func SeededReductions[S Seq[E], E any, A any](seq S, seed A, op func(A, E) A) Seq[A] {
-	res := SeqFunc(func(yield func(A) bool) {
-		acc := seed
-		if yield(acc) {
-			return
-		}
-		seq.ForEachUntil(func(e E) bool {
-			acc = op(acc, e)
-			return yield(acc)
-		})
-	})
-
-	if lener, ok := asLener(seq); ok {
-		res = withLenFunc(res, func() int { return 1 + lener.Len() })
-	}
-	return res
-}
-
-// SeqFunc returns a sequence that has its ForEachUntil method implemented by the specified function
-func SeqFunc[E any](fn func(yield func(E) bool)) Seq[E] {
-	return seqFunc[E](fn)
-}
-
-// Skip returns a sequence that omits the first `n` number of elements of the specified sequence
-//
-// If the source sequence has less than `n` elements the returned sequence will be empty
-func Skip[S Seq[E], E any](s S, n int) Seq[E] {
+// Take returns a sequence of at most n items from the start of the specified sequence.
+func Take[Item any](seq Seq[Item], n int) Seq[Item] {
 	if n == 0 {
-		return s
+		return Empty[Item]()
 	}
-	res := SeqFunc(func(yield func(E) bool) {
-		i := 0
-		s.ForEachUntil(func(e E) bool {
-			if i < n {
-				i++
-				return false
-			}
-			return yield(e)
-		})
-	})
-	if lener, ok := asLener(s); ok {
-		res = withLenFunc(res, func() int { return max(lener.Len()-n, 0) })
+
+	res := FromIter(iter.Take(ToIter(seq), n))
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		res = makeFinite(res, func() int { return min(finiteSeq.Len(), n) })
+	} else if IsInfinite(seq) {
+		res = makeFinite(res, func() int { return n })
 	}
 	return res
 }
 
-// SkipWhile returns a sequence that omits elements of the specified sequence while the specified predicate returns `true`
-func SkipWhile[S Seq[E], E any](s S, pred func(E) bool) Seq[E] {
-	return SeqFunc(func(yield func(E) bool) {
-		skipping := true
-		s.ForEachUntil(func(e E) bool {
-			skipping = skipping && pred(e)
-			if skipping {
-				return false
-			}
-			return yield(e)
-		})
-	})
-}
-
-// SlidingWindow returns a sequence of windows (slices of count length) containing the elements of the specified sequence.
-// Windows start after each other with a distance of skip.
-//
-// Deprecated: Use DivvyExact instead.
-func SlidingWindow[S Seq[E], E any](seq S, count int, skip int) Seq[[]E] {
-	return DivvyExact(seq, count, skip)
-}
-
-// Sum returns the sum of the specified sequence's elements.
-//
-// Application to an infinite sequence will block indefinitely.
-func Sum[S Seq[E], E Summable](seq S) E {
-	return Reduce(seq, add)
-}
-
-// Summable lists types that support addition using the + operator
-type Summable interface {
-	~float32 | ~float64 | ~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | string
-}
-
-// Take returns a sequence of the first `n` number of elements of the specified sequence
-//
-// If the source sequence has less then `n` elements the returned sequence will also have only that many elements
-func Take[S Seq[E], E any](s S, n int) Seq[E] {
-	if n == 0 {
-		return Empty[E]()
-	}
-
-	res := SeqFunc(func(yield func(E) bool) {
-		cnt := 0
-		s.ForEachUntil(func(e E) bool {
-			cnt++
-			return yield(e) || cnt == n
-		})
-	})
-	if lener, ok := asLener(s); ok {
-		res = withLenFunc(res, func() int { return min(lener.Len(), n) })
-	}
-	return res
-}
-
-// TakeWhile returns a sequence of the first elements of the specified sequence while the specified predicate returns `true`
-func TakeWhile[S Seq[E], E any](s S, pred func(E) bool) Seq[E] {
-	return SeqFunc(func(yield func(E) bool) {
-		s.ForEachUntil(func(e E) bool {
-			if pred(e) {
-				return yield(e)
-			}
-			return true
-		})
-	})
+// TakeWhile returns a prefix of the specified sequence that contains only items that match the specified predicate.
+func TakeWhile[Item any](seq Seq[Item], pred Pred[Item]) Seq[Item] {
+	return FromIter(iter.TakeWhile(ToIter(seq), pred))
 }
 
 // ToIter returns the sequence as an [iter.Seq]
-func ToIter[S Seq[E], E any](seq S) iter.Seq[E] {
-	return func(yield func(E) bool) {
-		ForEachWhile(seq, yield)
-	}
+func ToIter[SeqOfItem Seq[Item], Item any](seq SeqOfItem) iter.Seq[Item] {
+	return seq.ForEachWhile
 }
 
-// ToIter2 returns the sequence as an [iter.Seq2] by unpacking sequence elements with the specified function
-func ToIter2[S Seq[E], E, K, V any](seq S, unpack func(E) (K, V)) iter.Seq2[K, V] {
-	return func(yield func(K, V) bool) {
-		ForEachWhile(seq, func(value E) bool {
-			return yield(unpack(value))
-		})
+// ToSlice returns a slice of the specified sequence's items
+func ToSlice[SeqOfItem Seq[Item], Item any](seq SeqOfItem) (slice []Item) {
+	if length, ok := getLength(seq); ok && length > 0 {
+		slice = make([]Item, 0, length)
 	}
+	return slices.AppendSeq(slice, ToIter(seq))
 }
 
-// ToSet returns a set (boolean valued map) created from the elements of the specified sequence
+// Unfold returns a sequence of items generated by successively applying the specified function to the seed value.
 //
-// Application to an infinite sequence will block indefinitely.
-func ToSet[S Seq[E], E comparable](seq S) (res map[E]bool) {
-	if lener, ok := asLener(seq); ok {
-		res = make(map[E]bool, lener.Len())
-	} else {
-		res = make(map[E]bool)
-	}
-	seq.ForEachUntil(func(e E) bool {
-		res[e] = true
-		return false
-	})
-	return
+// The specified function should return three values:
+// * the next item when there is one OR the zero value of [Item] when there isn't
+// * whether there is a next item
+// * the seed value for the next invocation of the function.
+func Unfold[Item, State any](seed State, next func(State) (Item, bool, State)) Seq[Item] {
+	return FromIter(iter.Unfold(seed, next))
 }
 
-// ToSlice returns a slice of the specified sequence's elements
-func ToSlice[S Seq[E], E any](seq S) (res []E) {
-	if lener, ok := asLener(seq); ok {
-		if l := lener.Len(); l > 0 {
-			res = make([]E, 0, lener.Len())
-		}
-	}
-	seq.ForEachUntil(func(e E) bool {
-		res = append(res, e)
-		return false
-	})
-	return
+// YieldAll yields all items from the specified sequence using the specified function.
+// It returns false if yield returned false.
+//
+// This can be useful when forwarding enumeration to a child sequence or emulating Python's for-else.
+func YieldAll[Item any](seq Seq[Item], yield func(Item) bool) bool {
+	return iter.YieldAll(ToIter(seq), yield)
 }
 
-// ZipMany returns a sequence of slices containing elements of the same index from the specified sequences
-func ZipMany[E any](seqs ...Seq[E]) Seq[[]E] {
+// ZipMany returns a sequence of slices obtained by taking corresponding items from the specified sequences.
+func ZipMany[Item any](seqs ...Seq[Item]) Seq[[]Item] {
 	switch len(seqs) {
 	case 0:
-		return Empty[[]E]()
+		return Empty[[]Item]()
 	case 1:
-		return Map(seqs[0], func(e E) []E { return []E{e} })
+		return Map(seqs[0], func(item Item) []Item { return []Item{item} })
 	}
 
-	res := SeqFunc(func(yield func([]E) bool) {
-		nextChs := make([]chan E, len(seqs))
-		moveNextChs := make([]chan struct{}, len(seqs))
-
-		for i := range seqs {
-			nextChs[i] = make(chan E)
-			moveNextChs[i] = make(chan struct{})
-
-			defer close(moveNextChs[i])
-
-			go iterate(seqs[i], nextChs[i], moveNextChs[i])
-		}
-
-		for {
-			for _, moveNextCh := range moveNextChs {
-				moveNextCh <- struct{}{}
-			}
-
-			nexts := make([]E, len(seqs))
-			allHaveNext := true
-			for i, nextCh := range nextChs {
-				next, hasNext := <-nextCh
-				nexts[i] = next
-				allHaveNext = allHaveNext && hasNext
-			}
-
-			if !allHaveNext || yield(nexts) {
-				return
-			}
-		}
-	})
-	if areLeners(seqs...) {
-		res = withLenFunc(res, func() (length int) {
-			for _, seq := range seqs {
-				length = min(length, seq.(Lener).Len())
-			}
-			return
-		})
+	res := FromIter(int_iter.ZipMany(wrapSeqSlice(seqs)))
+	if lengths, ok := getLengths(wrapSeqSlice(seqs)); ok {
+		res = makeFinite(res, func() int { return iter.Min(lengths) })
 	}
 	return res
 }
 
-// ZipWith returns a sequence containing results of the specified merge function applied to elements of the same index from both specified sequences
-func ZipWith[S1 Seq[E1], S2 Seq[E2], E1 any, E2 any, T any](seq1 S1, seq2 S2, merge func(E1, E2) T) Seq[T] {
-	res := SeqFunc(func(yield func(T) bool) {
-		nextCh1, nextCh2 := make(chan E1), make(chan E2)
-		moveNextCh1, moveNextCh2 := make(chan struct{}), make(chan struct{})
-
-		// closing moveNextCh* channels releases the below goroutines
-		defer close(moveNextCh1)
-		defer close(moveNextCh2)
-
-		go iterate(seq1, nextCh1, moveNextCh1)
-		go iterate(seq2, nextCh2, moveNextCh2)
-
-		for {
-			moveNextCh1 <- struct{}{}
-			moveNextCh2 <- struct{}{}
-
-			next1, hasNext1 := <-nextCh1
-			next2, hasNext2 := <-nextCh2
-
-			if !hasNext1 || !hasNext2 || yield(merge(next1, next2)) {
-				return
-			}
-		}
-	})
-	if lener1, ok := asLener(seq1); ok {
-		if lener2, ok := asLener(seq2); ok {
-			res = withLenFunc(res, func() int { return min(lener1.Len(), lener2.Len()) })
-		}
+// ZipWith returns a sequence containing results of applying the specified combining function to corresponding items from the specified sequences.
+func ZipWith[ItemIn1, ItemIn2, ItemOut any](seq1 Seq[ItemIn1], seq2 Seq[ItemIn2], combine func(ItemIn1, ItemIn2) ItemOut) Seq[ItemOut] {
+	res := FromIter(iter.PackMap(iter.Zip(ToIter(seq1), ToIter(seq2)), combine))
+	finiteSeq1, isFiniteSeq1 := AsFiniteSeq(seq1)
+	finiteSeq2, isFiniteSeq2 := AsFiniteSeq(seq2)
+	if isFiniteSeq1 && isFiniteSeq2 {
+		res = makeFinite(res, func() int { return min(finiteSeq1.Len(), finiteSeq2.Len()) })
 	}
 	return res
 }
 
-func iterate[E any](seq Seq[E], nextCh chan<- E, moveNextCh <-chan struct{}) {
-	defer close(nextCh)
+func asIndexable[SeqOfItem Seq[Item], Item any](seq SeqOfItem) (indexable Indexable[Item], isIndexable bool) {
+	indexable, isIndexable = any(seq).(Indexable[Item])
+	return
+}
 
-	_, moveNext := <-moveNextCh
-	if !moveNext {
-		return
+// canDivergeMark is a marker type for seqs that are known to be possibly divergent (e.g. Filter(Repeat(0), func(i int) bool { return i > 0 }))
+type canDivergeMark struct{}
+
+func (canDivergeMark) CanDiverge() {}
+
+func concat[
+	Seqs FiniteSeq[SeqOfItem],
+	SeqOfItem Seq[Item],
+	Item any,
+](seqs Seqs) Seq[Item] {
+	switch seqs.Len() {
+	case 0:
+		return Empty[Item]()
+	case 1:
+		seq, _ := firstOfFiniteSeq(seqs)
+		return seq
 	}
 
-	ForEachWhile(seq, func(e E) bool {
-		nextCh <- e
-		_, moveNext := <-moveNextCh
-		return moveNext
-	})
+	res := FromIter(iter.Flatten(iter.Map(ToIter(seqs), ToIter)))
+	if lengths, ok := getLengths(seqs); ok {
+		res = makeFinite(res, func() int { return iter.Sum(lengths) })
+	} else if Any(seqs, IsInfinite) {
+		res = markInfinite(res)
+	}
+	return res
 }
 
-type emptySeq[E any] struct{}
+type emptySeq[Item any] struct{}
 
-func (emptySeq[E]) ForEachUntil(func(E) bool) {}
+func (emptySeq[Item]) ForEachWhile(func(Item) bool) {}
 
-func (emptySeq[E]) Len() int {
-	return 0
+func (emptySeq[_]) Len() int { return 0 }
+
+func makeFinite[Item any](seq Seq[Item], lenFn lenFunc) FiniteSeq[Item] {
+	return finiteSeq[Item]{
+		Seq:   seq,
+		lenFn: lenFn,
+	}
 }
 
-type seqFunc[E any] func(yield func(E) bool)
-
-func (s seqFunc[E]) ForEachUntil(yield func(E) bool) {
-	s(yield)
+type finiteSeq[Item any] struct {
+	Seq[Item]
+	lenFn lenFunc
 }
 
-type singleton[E any] struct {
-	value E
+func (seq finiteSeq[Item]) Len() int {
+	return seq.lenFn()
 }
 
-func (s singleton[E]) ForEachUntil(yield func(E) bool) {
-	yield(s.value)
+func markInfinite[Item any](seq Seq[Item]) Seq[Item] {
+	return struct {
+		Seq[Item]
+		infiniteMark
+	}{
+		Seq: seq,
+	}
 }
 
-func (s singleton[E]) Len() int {
+type infiniteMark struct{}
+
+func (infiniteMark) Infinite() {}
+
+type lenFunc = func() int
+
+type seqFunc[Item any] iter.Seq[Item]
+
+func (seq seqFunc[Item]) ForEachWhile(yield func(Item) bool) {
+	seq(yield)
+}
+
+type singleton[Item any] struct {
+	item Item
+}
+
+func (s singleton[Item]) ForEachWhile(yield func(Item) bool) {
+	_ = yield(s.item)
+}
+
+func (seq singleton[Item]) Index(idx int) Item {
+	return [...]Item{seq.item}[idx]
+}
+
+func (singleton[_]) Len() int {
 	return 1
 }
 
-type sliceSeq[E any] []E
+type sliceSeq[Item any] []Item
 
-func (s sliceSeq[E]) ForEachUntil(yield func(E) bool) {
-	for _, e := range s {
-		if yield(e) {
+func (seq sliceSeq[Item]) ForEachWhile(yield func(Item) bool) {
+	slices.Values(seq)(yield)
+}
+
+func (seq sliceSeq[Item]) Index(idx int) Item {
+	return seq[idx]
+}
+
+func (seq sliceSeq[_]) Len() int {
+	return len(seq)
+}
+
+type slicePtrsSeq[Item any] []Item
+
+func (seq slicePtrsSeq[Item]) ForEachWhile(yield func(*Item) bool) {
+	for i := range seq {
+		if !yield(&seq[i]) {
 			return
 		}
 	}
 }
 
-func (s sliceSeq[E]) Len() int {
-	return len(s)
+func (seq slicePtrsSeq[Item]) Index(idx int) *Item {
+	return &seq[idx]
 }
 
-type slicePtrsSeq[E any] []E
+func (seq slicePtrsSeq[_]) Len() int {
+	return len(seq)
+}
 
-func (s slicePtrsSeq[E]) ForEachUntil(yield func(*E) bool) {
-	for i := range s {
-		if yield(&s[i]) {
-			return
+func firstOfFiniteSeq[Item any](seq FiniteSeq[Item]) (Item, bool) {
+	if seq.Len() == 0 {
+		return *new(Item), false
+	}
+	if indexable, isIndexable := asIndexable(seq); isIndexable {
+		return indexable.Index(0), true
+	}
+	return iter.First(ToIter(seq))
+}
+
+func getLength[Item any](seq Seq[Item]) (int, bool) {
+	if finiteSeq, isFiniteSeq := AsFiniteSeq(seq); isFiniteSeq {
+		return finiteSeq.Len(), true
+	}
+	return 0, false
+}
+
+func getLengths[
+	Seqs FiniteSeq[SeqOfItem],
+	SeqOfItem Seq[Item],
+	Item any,
+](seqs Seqs) (iter.Seq[int], bool) {
+	for seq := range ToIter(seqs) {
+		if !IsFinite(seq) {
+			return nil, false
 		}
 	}
+	return iter.Map(ToIter(seqs), func(seq SeqOfItem) int {
+		return any(seq).(FiniteSeq[Item]).Len()
+	}), true
 }
 
-func (s slicePtrsSeq[E]) Len() int {
-	return len(s)
-}
-
-func add[V Summable](a, b V) V {
-	return a + b
-}
-
-func asLener(v any) (Lener, bool) {
-	lener, ok := v.(Lener)
-	return lener, ok
-}
-
-func areLeners[E any](seqs ...Seq[E]) bool {
-	for _, seq := range seqs {
-		if _, ok := seq.(Lener); !ok {
-			return false
-		}
+func looksEmpty[Item any](seq Seq[Item]) (isEmpty bool, weKnow bool) {
+	if len, hasLen := getLength(seq); hasLen {
+		return len == 0, true
 	}
-	return true
-}
-
-func withLenFunc[E any](seq Seq[E], lenFn func() int) FiniteSeq[E] {
-	return struct {
-		Seq[E]
-		lenFunc
-	}{
-		Seq:     seq,
-		lenFunc: lenFn,
+	if IsInfinite(seq) {
+		return false, true
 	}
-}
-
-type lenFunc func() int
-
-func (fn lenFunc) Len() int {
-	return fn()
+	return false, false
 }
 
 func roundDownDiv(nom int, denom int) int {
@@ -973,4 +856,35 @@ func roundDownDiv(nom int, denom int) int {
 
 func roundUpDiv(nom int, denom int) int {
 	return (nom + denom - 1) / denom
+}
+
+func wrapSeqSlice[SeqOfItem Seq[Item], Item any](seqs []SeqOfItem) seqSlice[SeqOfItem, Item] {
+	return seqSlice[SeqOfItem, Item](seqs)
+}
+
+type seqSlice[SeqOfItem Seq[Item], Item any] []SeqOfItem
+
+func (seqs seqSlice[SeqOfItem, _]) ForEachWhile(yield func(SeqOfItem) bool) {
+	slices.Values(seqs)(yield)
+}
+
+func (seqs seqSlice[SeqOfItem, _]) Index(idx int) SeqOfItem {
+	return seqs[idx]
+}
+
+func (seqs seqSlice[SeqOfItem, Item]) ItemsWithIndex(yield func(int, iter.Seq[Item]) bool) {
+	iter.Map2(slices.All(seqs), func(i int, v SeqOfItem) (int, iter.Seq[Item]) { return i, ToIter(v) })(yield)
+}
+
+func (seqs seqSlice[_, _]) Len() int {
+	return len(seqs)
+}
+
+func pairFrom[Value1, Value2 any](value1 Value1, value2 Value2) Pair[Value1, Value2] {
+	return internal.PairFrom(value1, value2)
+}
+
+func second[P Pair[Value1, Value2], Value1, Value2 any](pair P) Value2 {
+	_, value2 := pair.Unpack()
+	return value2
 }
