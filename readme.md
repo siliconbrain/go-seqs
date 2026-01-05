@@ -31,7 +31,7 @@ type Seq[V any] func(yield func(V) bool)
 which unfortunately means no non-trivial methods can be defined on implementations.
 Meanwhile, implementations of [`seqs.Seq`](https://pkg.go.dev/github.com/siliconbrain/go-seqs/seqs#Seq) interface can also implement any other interface.
 The library exploits this to support
-* querying the length of sequences without enumerating them (see [`seqs.FiniteSeq`](https://pkg.go.dev/github.com/siliconbrain/go-seqs/seqs#FiniteSeq),
+* querying the length of sequences without enumerating them (see [`seqs.FiniteSeq`](https://pkg.go.dev/github.com/siliconbrain/go-seqs/seqs#FiniteSeq)),
 * quickly accessing specific items of directly indexable sequences (see [`seqs.Indexable`](https://pkg.go.dev/github.com/siliconbrain/go-seqs/seqs#Indexable)),
 * marking and identifying sequences as infinite and/or possibly [divergent](https://en.wikipedia.org/wiki/Divergence_(computer_science)),
 * and more.
