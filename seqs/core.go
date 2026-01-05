@@ -653,7 +653,13 @@ func Unfold[Item, State any](seed State, next func(State) (Item, bool, State)) S
 // YieldAll yields all items from the specified sequence using the specified function.
 // It returns false if yield returned false.
 //
-// This can be useful when forwarding enumeration to a child sequence or emulating Python's for-else.
+// This can be useful when manually concatenating sequences, e.g.:
+//
+//	func MyConcat(seq1, seq2 seqs.Seq[int]) seqs.Seq[int] {
+//		return seqs.FromIter(func(yield func(int) bool) {
+//			_ = seqs.YieldAll(seq1, yield) && seqs.YieldAll(seq2, yield)
+//		})
+//	}
 func YieldAll[Item any](seq Seq[Item], yield func(Item) bool) bool {
 	return iter.YieldAll(ToIter(seq), yield)
 }

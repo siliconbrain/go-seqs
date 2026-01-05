@@ -1231,7 +1231,13 @@ func Unzip[Item1, Item2 any](seq Seq2[Item1, Item2]) (Seq[Item1], Seq[Item2]) {
 // YieldAll yields all items from the specified sequence using the specified function.
 // It returns false if yield returned false.
 //
-// This can be useful when forwarding enumeration to a child sequence or emulating Python's for-else.
+// This can be useful when manually concatenating sequences, e.g.:
+//
+//	func MyConcat(seq1, seq2 iter.Seq[int]) iter.Seq[int] {
+//		return func(yield func(int) bool) {
+//			_ = iter.YieldAll(seq1, yield) && iter.YieldAll(seq2, yield)
+//		}
+//	}
 func YieldAll[Item any](seq Seq[Item], yield func(Item) bool) bool {
 	for item := range seq {
 		if !yield(item) {
@@ -1244,7 +1250,13 @@ func YieldAll[Item any](seq Seq[Item], yield func(Item) bool) bool {
 // YieldAll2 yields all pairs from the specified sequence using the specified function.
 // It returns false if yield returned false.
 //
-// This can be useful when forwarding enumeration to a child sequence or emulating Python's for-else.
+// This can be useful when manually concatenating sequences, e.g.:
+//
+//	func MyConcat(seq1, seq2 iter.Seq2[int, string]) iter.Seq2[int, string] {
+//		return func(yield func(int, string) bool) {
+//			_ = iter.YieldAll2(seq1, yield) && iter.YieldAll2(seq2, yield)
+//		}
+//	}
 func YieldAll2[Item1, Item2 any](seq Seq2[Item1, Item2], yield func(Item1, Item2) bool) bool {
 	for item1, item2 := range seq {
 		if !yield(item1, item2) {
